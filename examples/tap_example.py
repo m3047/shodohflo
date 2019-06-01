@@ -23,7 +23,7 @@ You can simply run it, or you can use it by:
 
     cd <this directory>
     python3
-    >>> from dns_example import Server, UnixSocket, SOCKET_ADDRESS, DnsTap
+    >>> from tap_example import Server, UnixSocket, SOCKET_ADDRESS, DnsTap
     >>> tap = DnsTap()
     >>> server = Server(UnixSocket(SOCKET_ADDRESS), tap)
     >>> server.listen()
