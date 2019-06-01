@@ -1,4 +1,4 @@
-# shodoflo
+# shodohflo
 
 Ultimately this is going to be a DNS and netflow (IP address) correlator. It also includes pure Python implementations of Frame Streams and Protobuf, useful in their own right.
 
@@ -15,4 +15,4 @@ It is developed and tested on Linux.
 
 ## Examples
 
-`tap.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data.
+`tap_example.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data.
