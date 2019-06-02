@@ -23,9 +23,12 @@ import sys
 from os import path
 import logging
 
+#logging.basicConfig(level=logging.DEBUG)
+
 import redis
 
 import dns.rdatatype as rdatatype
+import dns.rcode as rcode
 
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
@@ -36,7 +39,7 @@ SOCKET_ADDRESS = '/tmp/dnstap'
 CONTENT_TYPE = 'protobuf:dnstap.Dnstap'
 
 REDIS_SERVER = 'localhost'
-TTL_GRACE = 60
+TTL_GRACE = 900         # 15 minutes
 
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
@@ -55,8 +58,8 @@ class DnsTap(Consumer):
             logging.warn('Unexpected content type "{}", continuing...'.format(data_type))
         return True
     
-    def to_redis(self, client_address, name, ttl, address ):
-        k = '{}:{}:dns'.format(client_address,address)
+    def a_to_redis(self, client_address, name, ttl, address ):
+        k = '{}:{}:dns'.format(client_address, address)
         ttl += TTL_GRACE
         name = ';{};'.format(name)
         names = self.redis.get(k) or ''
@@ -67,19 +70,40 @@ class DnsTap(Consumer):
             self.redis.expire(k, ttl)
         return
     
+    def cname_to_redis(self, client_address, oname, rname):
+        k = '{}:{}:cname'.format(client_address, rname)
+        oname = ';{};'.format(oname)
+        names = self.redis.get(k) or ''
+        if oname not in names:
+            self.redis.append(k, oname)
+        self.redis.expire(k, TTL_GRACE)
+        return
+    
+    def nx_to_redis(self, client_address, name):
+        k = '{}:{}:nx'.format(client_address, name)
+        self.redis.incr(k)
+        self.redis.expire(k, TTL_GRACE)
+        return
+    
     def consume(self, frame):
         message = dnstap.Dnstap(frame).field('message')[1]
         response = message.field('response_message')[1]
-        if response.rcode() != 0:
-            return True
         client_address = message.field('query_address')[1]
+        if response.rcode() == rcode.NXDOMAIN:
+            self.nx_to_redis(client_address, response.question[0].name.to_text())
+            return True
+        if response.rcode() != rcode.NOERROR:
+            return True
         for rrset in response.answer:
-            if rrset.rdtype not in self.ADDRESS_RECORDS:
-                continue
             name = rrset.name.to_text()
-            ttl = rrset.ttl
-            for rr in rrset:
-                self.to_redis(client_address, name, ttl, rr.to_text())
+            if rrset.rdtype in self.ADDRESS_RECORDS:
+                ttl = rrset.ttl
+                for rr in rrset:
+                    self.a_to_redis(client_address, name, ttl, rr.to_text())
+                continue
+            if rrset.rdtype == rdatatype.CNAME:
+                self.cname_to_redis(client_address, name, rrset[0].to_text())
+                continue
         return True
     
     def finished(self, partial_frame):
