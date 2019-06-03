@@ -6,13 +6,25 @@ _Dnstap_ is a technology for DNS traffic capture within a DNS server, therefore 
 
 ## Prerequisites
 
-Aside from standard libraries the only dependencies are:
+Aside from standard libraries the only dependencies for the core `shodoflo` package components are:
 
 * Python 3
 * dnspython
 
-It is developed and tested on Linux.
+Additionally for the `app/` (under construction) additional anticipated dependencies are:
+
+* redis
+* dpkt
+* flask
+* flask_restful
+
+It is developed and tested on _Linux_. In particular the agents will likely not run except on _Linux_.
 
 ## Examples
 
-`tap_example.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data.
+`tap_example.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data and
+has no dependencies beyond those for core components.
+
+## Collaborators welcomed!
+
+Send me an email, or file an issue or PR.
