@@ -30,7 +30,7 @@ You can simply run it, or you can use it by:
     ...
     ^C
     KeyboardInterrupt
-    >>> server.socket.close()
+    >>> server.sock.close()
     >>> tap.protobuf.field('message')[1].field('query_address')
     (Protobuf field: <class 'shodohflo.protobuf.dnstap.IpAddressField'>, IPv4Address('127.0.0.1'))
 
