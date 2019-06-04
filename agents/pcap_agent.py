@@ -37,7 +37,7 @@ from os import path
 import time
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 
 import ctypes
 import ctypes.util
