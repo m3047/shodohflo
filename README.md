@@ -1,3 +1,7 @@
+# Prologue
+
+There's a perfectly good _dnstap_ dissector here. You'll find it in `shodohflo/`, with an example: `examples/tap_example.py`.
+
 # shodohflo
 
 Ultimately this is going to be a DNS and netflow (IP address) correlator. It also includes pure Python implementations of Frame Streams and Protobuf, useful in their own right.
