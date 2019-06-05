@@ -10,7 +10,7 @@ _Dnstap_ is a technology for DNS traffic capture within a DNS server, therefore 
 
 ## Prerequisites
 
-Aside from standard libraries the only dependencies for the core `shodoflo` package components are:
+Aside from standard libraries the only dependencies for the core `shodohflo` package components are:
 
 * Python 3
 * dnspython
