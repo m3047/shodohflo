@@ -16,7 +16,9 @@
 """DNS Agent.
 
 Uses Dnstap to capture A and AAAA responses to specific addresses and send
-them to Redis.
+them to Redis. By default only Client Response type messages are processed
+and you'll get better performance if you configure your DNS server to only
+send such messages.
 """
 
 import sys
@@ -48,8 +50,18 @@ class DnsTap(Consumer):
     
     ADDRESS_RECORDS = { rdatatype.A, rdatatype.AAAA }
     
-    def __init__(self):
+    def __init__(self, message_type=dnstap.Message.TYPE_CLIENT_RESPONSE):
+        """Dnstap consumer.
+
+        Parameters:
+        
+            message_type: This agent is intended to consume client response
+                          messages. You can have it process all messages by
+                          setting this to None, but then you'll get potentially
+                          strange client addresses logged to Redis.
+        """
         self.redis = redis.client.Redis(REDIS_SERVER, decode_responses=True)
+        self.message_type = message_type
         return
 
     def accepted(self, data_type):
@@ -86,9 +98,19 @@ class DnsTap(Consumer):
         return
     
     def consume(self, frame):
+        """Consume Dnstap data.
+        
+        By default the type is restricted to dnstap.Message.TYPE_CLIENT_RESPONSE.
+        """
+        performance_hint = True
         message = dnstap.Dnstap(frame).field('message')[1]
         response = message.field('response_message')[1]
         client_address = message.field('query_address')[1]
+        if message_type and message.field('type')[1] != self.message_type:
+            if performance_hint:
+                logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
+                performance_hint = False
+            return True
         if response.rcode() == rcode.NXDOMAIN:
             self.nx_to_redis(client_address, response.question[0].name.to_text())
             return True
