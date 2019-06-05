@@ -29,7 +29,7 @@ It is developed and tested on _Linux_. In particular the agents will likely not 
 ### `shodohflo` package (Dnstap listener)
 
 1. Download or clone the repo.
-1. Make sure the =dnspython= package is installed (see _PyPI.org_)
+1. Make sure the _dnspython_ package is installed (see _PyPI.org_)
 1. Make sure your DNS server is compiled with _dnstap_ and configured to write to a unix domain socket.
 1. Make sure that `SOCKET_ADDRESS` in `tap_example.py` references the socket location.
 1. You should be able to run the `tap_example.py` program.
