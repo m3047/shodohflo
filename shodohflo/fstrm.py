@@ -104,7 +104,7 @@ class UnixSocket(StreamingSocket):
         try:
             os.unlink(self.path)
         except OSError:
-            if os.path.exists(server_address):
+            if os.path.exists(self.path):
                 raise
 
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
