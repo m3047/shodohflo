@@ -1,0 +1,12 @@
+[Unit]
+Description=ShoDoHFlo Dnstap Agent
+Requires=named.service
+After=named.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/share/shodohflo/agents/dns_agent.py
+Restart=on-failure
+
+[Install]
+WantedBy=named.service
