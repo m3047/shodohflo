@@ -106,7 +106,7 @@ class DnsTap(Consumer):
         message = dnstap.Dnstap(frame).field('message')[1]
         response = message.field('response_message')[1]
         client_address = message.field('query_address')[1]
-        if message_type and message.field('type')[1] != self.message_type:
+        if self.message_type and message.field('type')[1] != self.message_type:
             if performance_hint:
                 logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
                 performance_hint = False
