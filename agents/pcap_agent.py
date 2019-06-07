@@ -52,6 +52,9 @@ if LOG_LEVEL is not None:
 
 TTL_GRACE = 900         # 15 minutes
 
+if USE_DNSPYTHON:
+    import dns.resolver as resolver
+
 ETH_IP4 = 0x0800
 ETH_IP6 = 0x86DD
 
