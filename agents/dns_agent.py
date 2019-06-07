@@ -35,7 +35,13 @@ sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 from shodohflo.fstrm import Consumer, Server, UnixSocket
 import shodohflo.protobuf.dnstap as dnstap
 
-from configuration import *
+if __name__ == "__main__":
+    from configuration import *
+else:
+    SOCKET_ADDRESS = '/tmp/dnstap'
+    REDIS_SERVER = 'localhost'
+    USE_DNSPYTHON = False
+    LOG_LEVEL = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)

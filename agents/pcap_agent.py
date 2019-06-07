@@ -45,7 +45,12 @@ import ipaddress
 import dpkt
 import redis
 
-from configuration import *
+if __name__ == "__main__":
+    from configuration import *
+else:
+    REDIS_SERVER = 'localhost'
+    USE_DNSPYTHON = False
+    LOG_LEVEL = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
