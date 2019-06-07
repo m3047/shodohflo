@@ -35,6 +35,14 @@ It is developed and tested on _Linux_. In particular the agents will likely not 
 1. You should be able to run the `tap_example.py` program.
 1. You can symlink / move / copy the `shodohflo` package wherever you wish.
 
+You can find additional pointers in the `install/` directory.
+
+### Agents
+
+1. Follow the instructions in the `install/` directory.
+1. Review the README in the `agents/` directory and copy `configuration_sample.py` to `configuration.py`.
+1. Look in `install/systemd/` for service scripts and review the README there.
+
 ## Examples
 
 `tap_example.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data and
