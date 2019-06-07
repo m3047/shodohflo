@@ -1,5 +1,8 @@
 The agents in this directory capture information and forward it to a _Redis_ instance.
 
+Before attempting to run either of them `cp configuration_sample.py configuration.py` and make
+whatever edits are appropriate.
+
 ### dns_agent.py
 
 This needs to run on the host running your local caching resolver, which has been compiled with _dnstap_ support.
@@ -28,3 +31,25 @@ Theoretically it will work with either IP4 or IP6, figuring that out from _our-n
 tested with IP6.
 
 You may also need to alter `REDIS_SERVER`.
+
+### socket.getaddrinfo() unreliable
+
+_Redis_ calls `socket.getaddrinfo()` when a hostname is supplied. Unfortunately this causes issues when using
+DNS resolution, because DNS is supposed to be case insensitive and `getaddrinfo()` is not honoring that:
+
+```
+# python3
+Python 3.6.5 (default, Mar 31 2018, 19:45:04) [GCC] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> from socket import getaddrinfo
+>>> getaddrinfo('sophia.m3047',6379)
+[(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_DGRAM: 2>, 17, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_RAW: 3>, 0, '', ('209.221.140.128', 6379))]
+>>> getaddrinfo('SOPHIA.m3047',6379)
+[(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('10.0.0.224', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_DGRAM: 2>, 17, '', ('10.0.0.224', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_RAW: 3>, 0, '', ('10.0.0.224', 6379))]
+>>> getaddrinfo('does-not-exist.m3047',6379)
+[(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_DGRAM: 2>, 17, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_RAW: 3>, 0, '', ('209.221.140.128', 6379))]
+```
+
+Both agents have an option to use _dnspython_ for hostname resolution by setting `USE_DNSPTYHON = True`. This
+isn't an additional dependency for the DNS agent, but it is for the packet capture agent. Look in the
+configuraton file for further information.
