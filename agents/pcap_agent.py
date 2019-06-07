@@ -37,8 +37,6 @@ from os import path
 import time
 import logging
 
-#logging.basicConfig(level=logging.DEBUG)
-
 import ctypes
 import ctypes.util
 import struct
@@ -47,7 +45,11 @@ import ipaddress
 import dpkt
 import redis
 
-REDIS_SERVER = 'localhost'
+from configuration import *
+
+if LOG_LEVEL is not None:
+    logging.basicConfig(level=LOG_LEVEL)
+
 TTL_GRACE = 900         # 15 minutes
 
 ETH_IP4 = 0x0800
@@ -137,7 +139,11 @@ def main():
     interface, our_network = sys.argv[1:3]
     logging.info('Packet Capture Agent starting. Interface: {}  Our Network: {}  Redis: {}'.format(interface, our_network, REDIS_SERVER))
     sock, ip_class, our_network = get_socket(interface, our_network)
-    redis_client = redis.client.Redis(REDIS_SERVER, decode_responses=True)
+    if USE_DNSPYTHON:
+        redis_server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
+    else:
+        redis_server = REDIS_SERVER
+    self.redis = redis.client.Redis(redis_server, decode_responses=True)
     recently = Recent()
     while True:
         msg = sock.recv(60)

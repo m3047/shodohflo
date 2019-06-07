@@ -25,8 +25,6 @@ import sys
 from os import path
 import logging
 
-#logging.basicConfig(level=logging.DEBUG)
-
 import redis
 
 import dns.rdatatype as rdatatype
@@ -37,11 +35,17 @@ sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 from shodohflo.fstrm import Consumer, Server, UnixSocket
 import shodohflo.protobuf.dnstap as dnstap
 
-SOCKET_ADDRESS = '/tmp/dnstap'
+from configuration import *
+
+if LOG_LEVEL is not None:
+    logging.basicConfig(level=LOG_LEVEL)
+
 CONTENT_TYPE = 'protobuf:dnstap.Dnstap'
 
-REDIS_SERVER = 'localhost'
 TTL_GRACE = 900         # 15 minutes
+
+if USE_DNSPYTHON:
+    import dns.resolver as resolver
 
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
@@ -60,7 +64,11 @@ class DnsTap(Consumer):
                           setting this to None, but then you'll get potentially
                           strange client addresses logged to Redis.
         """
-        self.redis = redis.client.Redis(REDIS_SERVER, decode_responses=True)
+        if USE_DNSPYTHON:
+            redis_server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
+        else:
+            redis_server = REDIS_SERVER
+        self.redis = redis.client.Redis(redis_server, decode_responses=True)
         self.message_type = message_type
         return
 
