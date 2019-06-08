@@ -1,3 +1,5 @@
+### Installation
+
 **1) The first step in installation is to clone or unpack the repository somewhere..**
 
 One suggestion would be `/usr/local/share/`.
@@ -28,3 +30,14 @@ If you're not sure where python is going to look, you can find out this way:
 **3) Run `create_shodohflo.py` to create `__pycache__`**
 
 This script will also validate the correctness of your symlink.
+
+### Post installation
+
+If you are installing to run agents or the app, then you need to create `configuration.py`. There should be
+a `configuration_sample.py` in the appropriate directories.
+
+Look in the `install/systemd/` directory for _systemd_ service scripts.
+
+### Upgrades
+
+Upgrading should be as simple as running `git pull`. You may need to re-run `create_shodohflo_pycache.py` and restart services.
