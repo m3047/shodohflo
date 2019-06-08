@@ -1,7 +1,6 @@
 [Unit]
 Description=ShoDoHFlo Packet Flow Agent
-Requires=named.service
-After=named.service redis.target
+After=network.target
 
 [Service]
 Type=simple
@@ -9,4 +8,5 @@ ExecStart=/usr/local/share/shodohflo/agents/pcap_agent.py %i 10.0.0.0/8
 Restart=on-failure
 
 [Install]
+WantedBy=multi-user.target
 
