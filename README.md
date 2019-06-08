@@ -48,6 +48,8 @@ You can find additional pointers in the `install/` directory.
 `tap_example.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data and
 has no dependencies beyond those for core components.
 
+There are other examples as well, look in the `examples/` directory.
+
 ## Collaborators welcomed!
 
 Send me an email, or file an issue or PR.
