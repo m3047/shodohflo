@@ -25,6 +25,11 @@ Takes two arguments:
     our-nets:   A network mask which indicates which end of the connection is
                 "our" end.
 
+Keys written to Redis:
+
+    <client-address>:<remote-address>:<remote-port>:flow -> count (TTL_GRACE)
+        Remote addresses/ports and a relative count, not the true number of packets
+
 Packets between two nodes on the "our" network are not captured. Only traffic arriving
 at (destined for) "our" network is captured.
 
@@ -151,7 +156,7 @@ def main():
         redis_server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
     else:
         redis_server = REDIS_SERVER
-    self.redis = redis.client.Redis(redis_server, decode_responses=True)
+    redis_client = redis.client.Redis(redis_server, decode_responses=True)
     recently = Recent()
     while True:
         msg = sock.recv(60)
@@ -183,6 +188,9 @@ def main():
             continue
 
         logging.debug("{} <-> {}#{}".format(client, remote, remote_port))
+        redis_client.incr(k)
+        redis_client.expire(k, TTL_GRACE)
+        k = 'client:{}'.format(client)
         redis_client.incr(k)
         redis_client.expire(k, TTL_GRACE)
         

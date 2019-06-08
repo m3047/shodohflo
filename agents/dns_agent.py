@@ -19,6 +19,17 @@ Uses Dnstap to capture A and AAAA responses to specific addresses and send
 them to Redis. By default only Client Response type messages are processed
 and you'll get better performance if you configure your DNS server to only
 send such messages.
+        
+Keys written to Redis:
+
+    client:<client-address> -> counter (TTL_GRACE)
+        Index of all client addresses.
+    <client-address>:<address>:dns -> list of onames (ttl + TTL_GRACE)
+        List of FQDNs which an address resolves from.
+    <client-address>:<rname>:cname -> list of onames (TTL_GRACE)
+        List of FQDNs which a CNAME resolves from.
+    <client-address>:orname>:nx -> counter (TTL_GRACE)
+        FQDNs which return NXDOMAIN.
 """
 
 import sys
@@ -83,6 +94,12 @@ class DnsTap(Consumer):
         if data_type != CONTENT_TYPE:
             logging.warn('Unexpected content type "{}", continuing...'.format(data_type))
         return True
+
+    def client_to_redis(self, client_address):
+        k = 'client:{}'.format(client_address)
+        self.redis.incr(k)
+        self.redis.expire(k, TTL_GRACE)
+        return
     
     def a_to_redis(self, client_address, name, ttl, address ):
         k = '{}:{}:dns'.format(client_address, address)
@@ -126,6 +143,7 @@ class DnsTap(Consumer):
                 performance_hint = False
             return True
         if response.rcode() == rcode.NXDOMAIN:
+            self.client_to_redis(client_address)
             self.nx_to_redis(client_address, response.question[0].name.to_text())
             return True
         if response.rcode() != rcode.NOERROR:
@@ -133,11 +151,13 @@ class DnsTap(Consumer):
         for rrset in response.answer:
             name = rrset.name.to_text()
             if rrset.rdtype in self.ADDRESS_RECORDS:
+                self.client_to_redis(client_address)
                 ttl = rrset.ttl
                 for rr in rrset:
                     self.a_to_redis(client_address, name, ttl, rr.to_text())
                 continue
             if rrset.rdtype == rdatatype.CNAME:
+                self.client_to_redis(client_address)
                 self.cname_to_redis(client_address, name, rrset[0].to_text())
                 continue
         return True
