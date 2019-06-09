@@ -21,6 +21,7 @@ Additionally for the `app/` (under construction) additional anticipated dependen
 * dpkt
 * flask
 * flask_restful
+* a local caching resolving compiled with _dnstap_ support
 
 It is developed and tested on _Linux_. In particular the agents will likely not run except on _Linux_.
 
