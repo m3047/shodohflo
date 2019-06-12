@@ -26,7 +26,7 @@ if USE_DNSPYTHON:
 import ipaddress
 
 import redis
-from flask import Flask, request, render_template, url_for, redirect, Markup
+from flask import Flask, request, render_template, url_for, redirect
 
 from redis_data import get_all_clients, get_client_data, \
                        DNSArtifact, CNAMEArtifact, NXDOMAINArtifact, NetflowArtifact
@@ -42,7 +42,7 @@ def redis_client():
 
 class Link(object):
     """A single link in a chain."""
-    def __init__(self, origin, artifact_list=None)
+    def __init__(self, origin, artifact_list=None):
         """Links in a chain.
         
         Origin (external) links are first created as promises, whereas internal links are
@@ -85,7 +85,7 @@ class Link(object):
             self.depth = x
         return self.depth
                     
-class Link_Terminals(Link):
+class LinkTerminals(Link):
     """A special subclass for links which affirmatively end a chain.
     
     Most chains end naturally when there are no more links to follow. In some cases

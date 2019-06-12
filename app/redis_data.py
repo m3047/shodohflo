@@ -26,8 +26,9 @@ def get_all_clients(r_client):
 
 class ClientArtifact(object):
     """Base class for artifacts."""
+
     def __init__(self, k, v):
-        self.extract_key_data(k.split(';')
+        self.extract_key_data(k.split(';'))
         self.extract_value_data(v)
         return
     
@@ -64,13 +65,13 @@ class ClientArtifact(object):
         mapping[k].append(self)
         return
     
-def CounterArtifact(ClientArtifact):
+class CounterArtifact(ClientArtifact):
     """The associated value is a count."""
     def extract_value_data(self,v):
         self.count = int(v)
         return
 
-def ListArtifact(ClientArtifact):
+class ListArtifact(ClientArtifact):
     """The associated value is a list.
     
     It's always a list of onames (left hand side values). Or in other words
