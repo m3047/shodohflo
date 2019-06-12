@@ -1,0 +1,7 @@
+body    { background:white }
+h1      { text-align:center }
+td      { padding-left:1em; padding-right:1em }
+td.cbx  { width: 15em }
+
+div.iblock
+        { display:inline-block; vertical-align:middle }

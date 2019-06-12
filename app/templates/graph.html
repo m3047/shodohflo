@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>DNS + Netflow Correlator</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <h1>DNS &amp; Netflow Correlator</h1>
+    <form method="GET"><table>
+      <tr>
+        <td>
+          <p>Origin:<br/>
+            &nbsp;&nbsp;<input type="radio" name="origin" value="address" 
+              {% if origin == "address" %} checked {% endif %}/>&nbsp;Address
+            &nbsp;&nbsp;<input type="radio" name="origin" value="fqdn" 
+              {% if origin == "fqdn" %} checked {% endif %}/>&nbsp;FQDN
+          </p>
+        </td>
+        <td>
+          <p>Prefix:<br/>
+            &nbsp;&nbsp;<input type="text" name="prefix" value="{{ prefix }}"/> 
+          </p>
+        </td>
+        <td>
+          <p>Filter By:<br/>
+            &nbsp;&nbsp;<select name="filter">
+{% for option in filter_options %}
+  <option value="{{ option.value }}" {% if option.selected %} selected {% endif %} /> {{ option.value }}
+{% endfor %}
+                        </select>
+          </p>
+        </td>
+        <td class="cbx">
+          <p>show resolutions from all addresses in prefix:
+             <input type="checkbox" name="all" value="all" {% if all %} checked {% endif %} />
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="4">
+          <p>{{ message }}<input type="submit" name="update" value="Update"/></p>
+        </td>
+      </tr>
+    </table></form>
+    
+    {% autoescape false %}
+{% for row in table %}
+    <p><div class="iblock">{{ row }}</div></p>
+{% endfor %}
+    {% endautoescape %}
+
+  </body>
+</html>
