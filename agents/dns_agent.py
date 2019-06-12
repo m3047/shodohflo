@@ -96,13 +96,13 @@ class DnsTap(Consumer):
         return True
 
     def client_to_redis(self, client_address):
-        k = 'client:{}'.format(client_address)
+        k = 'client;{}'.format(client_address)
         self.redis.incr(k)
         self.redis.expire(k, TTL_GRACE)
         return
     
     def a_to_redis(self, client_address, name, ttl, address ):
-        k = '{}:{}:dns'.format(client_address, address)
+        k = '{};{};dns'.format(client_address, address)
         ttl += TTL_GRACE
         name = ';{};'.format(name)
         names = self.redis.get(k) or ''
@@ -114,7 +114,7 @@ class DnsTap(Consumer):
         return
     
     def cname_to_redis(self, client_address, oname, rname):
-        k = '{}:{}:cname'.format(client_address, rname)
+        k = '{};{};cname'.format(client_address, rname)
         oname = ';{};'.format(oname)
         names = self.redis.get(k) or ''
         if oname not in names:
@@ -123,7 +123,7 @@ class DnsTap(Consumer):
         return
     
     def nx_to_redis(self, client_address, name):
-        k = '{}:{}:nx'.format(client_address, name)
+        k = '{};{};nx'.format(client_address, name)
         self.redis.incr(k)
         self.redis.expire(k, TTL_GRACE)
         return

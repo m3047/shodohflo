@@ -40,16 +40,16 @@ def main():
         redis_server = REDIS_SERVER
     r = redis.client.Redis(redis_server, decode_responses=True)
     
-    for client in r.keys('client:*'):
+    for client in r.keys('client;*'):
 
         client_address = client.split(':',1)[1]
 
-        seen_count = r.get('client:{}'.format(client_address)) or 0
+        seen_count = r.get('client;{}'.format(client_address)) or 0
         seen_count = seen_count and str(seen_count) or 'n/a'
-        dns = len(r.keys('{}:*:dns'.format(client_address)))
-        cname = len(r.keys('{}:*:cname'.format(client_address)))
-        nx = len(r.keys('{}:*:nx'.format(client_address)))
-        flow = len(r.keys('{}:*:flow'.format(client_address)))
+        dns = len(r.keys('{};*;dns'.format(client_address)))
+        cname = len(r.keys('{};*;cname'.format(client_address)))
+        nx = len(r.keys('{};*;nx'.format(client_address)))
+        flow = len(r.keys('{};*;flow'.format(client_address)))
                 
         print('  {} ({}): dns: {}   cname: {}   nx: {}   flow: {}'.format(client, seen_count, dns, cname, nx, flow))
     

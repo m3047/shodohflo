@@ -183,14 +183,14 @@ def main():
         else:
             continue
         
-        k = "{}:{}:{}:flow".format(client, remote, remote_port)
+        k = "{};{};{};flow".format(client, remote, remote_port)
         if recently.seen(k):
             continue
 
         logging.debug("{} <-> {}#{}".format(client, remote, remote_port))
         redis_client.incr(k)
         redis_client.expire(k, TTL_GRACE)
-        k = 'client:{}'.format(client)
+        k = 'client;{}'.format(client)
         redis_client.incr(k)
         redis_client.expire(k, TTL_GRACE)
         
