@@ -42,7 +42,7 @@ def main():
     
     for client in r.keys('client;*'):
 
-        client_address = client.split(':',1)[1]
+        client_address = client.split(';',1)[1]
 
         seen_count = r.get('client;{}'.format(client_address)) or 0
         seen_count = seen_count and str(seen_count) or 'n/a'
