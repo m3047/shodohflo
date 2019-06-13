@@ -3,5 +3,11 @@ h1      { text-align:center }
 td      { padding-left:1em; padding-right:1em }
 td.cbx  { width: 15em }
 
+div.flows
+        { font-size: 80% }
 div.iblock
         { display:inline-block; vertical-align:middle }
+
+.muted  { color:#888888 }
+.credits
+        { margin-left:3em; margin-right:3em; color:#666666; font-size:80% }

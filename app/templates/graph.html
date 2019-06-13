@@ -42,12 +42,19 @@
         </td>
       </tr>
     </table></form>
-    
+
+    <div class="flows">
     {% autoescape false %}
 {% for row in table %}
     <p><div class="iblock">{{ row }}</div></p>
 {% endfor %}
     {% endautoescape %}
-
+    </div>
+    
+    <div class="credits">
+      <p>Copyright (c) 2019 Fred Morris, Tacoma WA. consulting@m3047.net. Apache 2.0 license.
+         GitHub: <a href="https://github.com/m3047/shodohflo">https://github.com/m3047/shodohflo</a>
+      </p>
+    </div>
   </body>
 </html>
