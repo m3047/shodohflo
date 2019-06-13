@@ -23,6 +23,9 @@ else:
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
+#import logging
+#logging.basicConfig(level=logging.INFO)
+
 import ipaddress
 
 import redis
@@ -33,6 +36,10 @@ from redis_data import get_all_clients, get_client_data, \
 
 app = Flask(__name__)
 
+# If something is this deep from FQDN to address, it's going to run very
+# poorly if at all....
+TOO_DEEP = 10
+
 def redis_client():
     if USE_DNSPYTHON:
         redis_server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
@@ -42,20 +49,23 @@ def redis_client():
 
 class Link(object):
     """A single link in a chain."""
-    def __init__(self, origin, artifact_list=None):
+    def __init__(self, origin, is_target=True, artifact_list=None):
         """Links in a chain.
         
         Origin (external) links are first created as promises, whereas internal links are
         built at creation time.
         """
         self.artifact = origin
+        self.is_target = is_target
         self.artifact_list = artifact_list
         self.reference_count = 0
         self.children = []
-        self.depth = None
+        self._depth = None
         return
     
-    def build(self, origin_type, origins, mappings, internal=set()):
+    def build(self, origin_type, origins, mappings, target, internal=None):
+        if internal is None:
+            internal = set()
         if internal and self.artifact in origins:
             link = origins[self.artifact]
             link.reference_count += 1
@@ -73,18 +83,19 @@ class Link(object):
                 self.children.append(NXDOMAINLink())
                 continue
             
-            self.children += [ Link(child).build(origin_type, origins, mappings, internal=internal)
-                               for child in artifact.children(origin_type)
+            self.children += [ Link(child,is_target).build(origin_type, origins, mappings, target, internal=internal)
+                               for child,is_target in artifact.children(origin_type, target)
                              ]
         return self
     
     def depth(self, x=0):
         """Return the depth of the chain."""
-        if self.depth is None:
-            x = max((child.depth(x+1) for child in self.children))
-            self.depth = x
-        return self.depth
-                    
+        if self._depth is None:
+            if self.children:
+                x = max((child.depth(x+1) for child in self.children))
+            self._depth = x
+        return self._depth
+    
 class LinkTerminals(Link):
     """A special subclass for links which affirmatively end a chain.
     
@@ -98,6 +109,13 @@ class NXDOMAINLink(LinkTerminals):
     def __init__(self):
         Link.__init__(self,'NXDOMAIN')
         return
+    
+    def depth(self, x=0):
+        """NX terminals shouldn't count towards depth."""
+        x -= 1
+        if x < 0:
+            x = 0
+        return x
     
 def calc_prefix(arg, addresses):
     """Calculates the prefix for the list of addresses.
@@ -154,10 +172,18 @@ def build_options(prefix, clients, selected):
             for address in sorted(addresses, key=lambda x: int(x))
            ]
 
+def muted(text,mute):
+    """Renders some text muted."""
+    if mute:
+        fmt = '<span class="muted">{}</span>'
+    else:
+        fmt = '{}'
+    return fmt.format(text)
+
 def render_chain(chain):
     """Render a single chain."""
     return ''.join([
-              chain.artifact, chain.children and '&nbsp;&rarr; ' or '',
+              muted(chain.artifact, not chain.is_target), chain.children and '&nbsp;&rarr; ' or '',
               '<div class="iblock">',
                 '<br/>'.join((render_chain(element) for element in chain.children)),
               '</div>'
@@ -168,7 +194,7 @@ def render_chains(origin_type, data, target):
     if target == '--all--':
         target = None
     else:
-        target = ipaddress.ip_network(filter)   # a single address network actually
+        target = ipaddress.ip_network(target)   # a single address network actually
 
     # Create mappings of artifacts. The keys in all_origins are a subset of what's in
     # all_mappings except when there is no mapping at all.
@@ -182,30 +208,35 @@ def render_chains(origin_type, data, target):
     
     # Make some promises regarding the origins.
     for origin in all_origins.keys():
-        all_origins[origin] = Link(origin, all_origins[origin])
+        all_origins[origin] = Link(origin, artifact_list=all_origins[origin])
     
     # Build origin chain fragments until they intersect another origin or
     # loop or die out.
     for origin in all_origins.values():
-        origin.build(origin_type, all_origins, all_mappings)
+        origin.build(origin_type, all_origins, all_mappings, target)
     
     # At this point our actual list of "true" origins is the list of things
     # for which all_origins[x].reference_count == 0
-    by_depth = [ [] for i in range(10) ]
-    for chain in chains:
+    by_depth = [ [] for i in range(TOO_DEEP) ]
+    for chain in all_origins.values():
         if chain.reference_count:
             continue
         depth = chain.depth()
-        if depth >= 10:
-            depth = 9
+        if depth >= TOO_DEEP:
+            depth = TOO_DEEP - 1
         by_depth[depth].append(chain)
-    for i in range(10):
+        
+    for i in range(TOO_DEEP):
         if origin_type == 'address':
             by_depth[i] = [ c[1] for c in
-                            sorted(([int(ipaddress.ip_address(chain.artifact)), chain] for chain in depth[i]), 
+                            sorted(([int(ipaddress.ip_address(chain.artifact)), chain] for chain in by_depth[i]), 
                                    key=lambda x: x[0] )
                           ]
-    
+        else:           # 'fqdn'
+            by_depth[i] = [ c[1] for c in
+                            sorted(([chain.artifact, chain] for chain in by_depth[i]), 
+                                   key=lambda x: x[0] )
+                          ]
     chains = [ render_chain(chain) for bucket in by_depth for chain in bucket ]
     
     return chains
@@ -242,8 +273,8 @@ def graph(origin):
     return render_template('graph.html',
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),
-                    all=True,
-                    table=[render_chains(origin, data, filter)],
+                    all=all,
+                    table=render_chains(origin, data, filter),
                     message="")
 
 if __name__ == "__main__":

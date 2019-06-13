@@ -15,6 +15,7 @@
 
 """Things useful for dealing with Redis."""
 
+#import logging
 import ipaddress
 
 def get_all_clients(r_client):
@@ -64,6 +65,9 @@ class ClientArtifact(object):
             mapping[k] = []
         mapping[k].append(self)
         return
+    
+    def is_targeted(self, target):
+        return target is None or self.client_address in target
     
 class CounterArtifact(ClientArtifact):
     """The associated value is a count."""
@@ -128,11 +132,12 @@ class DNSArtifact(ListArtifact):
         self.append_to_mapping(str(self.remote_address), mappings)
         return
     
-    def children(self, origin_type):
+    def children(self, origin_type, target):
+        targeted = self.is_targeted(target)
         if origin_type == 'address':
-            return self.onames
+            return [ (oname, targeted) for oname in self.onames ]
         else:           # fqdn
-            return [self.remote_address]
+            return [(str(self.remote_address), targeted)]
 
 class CNAMEArtifact(ListArtifact):
     """A CNAME artifact."""
@@ -160,11 +165,12 @@ class CNAMEArtifact(ListArtifact):
         self.append_to_mapping(self.rname, mappings)
         return
 
-    def children(self, origin_type):
+    def children(self, origin_type, target):
+        targeted = self.is_targeted(target)
         if origin_type == 'address':
-            return self.onames
+            return [ (oname, targeted) for oname in self.onames ]
         else:           # fqdn
-            return [self.rname]
+            return [(self.rname, targeted)]
 
 class NXDOMAINArtifact(CounterArtifact):
     """An FQDN for which DNS resolution failed."""
@@ -201,9 +207,9 @@ class NXDOMAINArtifact(CounterArtifact):
         self.append_to_mapping(self.oname, mappings)
         return
 
-    def children(self, origin_type):
+    def children(self, origin_type, target):
         if origin_type == 'fqdn':
-            return [self.oname]
+            return [(self.oname, self.is_targeted())]
         else:           # fqdn
             return []
 
