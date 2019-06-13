@@ -6,3 +6,4 @@ coffee shop for visibility into that traffic by advertising and cloud infrastruc
 that local DNS traffic is utilized in offices and other controlled access environments as an access control / auditing
 mechanism.
 
+![Screen Shot](screenshot.jpg "screenshot")
