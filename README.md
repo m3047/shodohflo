@@ -28,6 +28,9 @@ It is developed and tested on _Linux_. In particular the agents will likely not 
 
 ### `shodohflo` package (Dnstap listener)
 
+This is a pure python _dnstap_ protocol implementation for _Linux_, with potentially reusable _frame streams_
+and _protocol buffer_ implementations.
+
 1. Download or clone the repo.
 1. Make sure the _dnspython_ package is installed (see _PyPI.org_)
 1. Make sure your DNS server is compiled with _dnstap_ and configured to write to a unix domain socket.
@@ -39,9 +42,19 @@ You can find additional pointers in the `install/` directory.
 
 ### Agents
 
+There are two agents, one for packet capture and one for DNS traffic (using _dnstap_). Both of them write to _Redis_.
+
 1. Follow the instructions in the `install/` directory.
 1. Review the README in the `agents/` directory and copy `configuration_sample.py` to `configuration.py`.
 1. Look in `install/systemd/` for service scripts and review the README there.
+
+### The ShoDoHFlo app
+
+This is a browser-based DNS and netflow correlator.
+
+1. Follow the instructions in the `install/` directory
+1. Review the README in the `app/` directory and copy `configuration_sample.py` to `configuration.py`.
+1. To run the app run `app.py` with _Python 3_.
 
 ## Examples
 
