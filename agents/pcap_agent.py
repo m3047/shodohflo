@@ -27,7 +27,7 @@ Takes two arguments:
 
 Keys written to Redis:
 
-    <client-address>:<remote-address>:<remote-port>:flow -> count (TTL_GRACE)
+    <client-address>;<remote-address>;<remote-port>;flow -> count (TTL_GRACE)
         Remote addresses/ports and a relative count, not the true number of packets
 
 Packets between two nodes on the "our" network are not captured. Only traffic arriving

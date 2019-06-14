@@ -22,13 +22,13 @@ send such messages.
         
 Keys written to Redis:
 
-    client:<client-address> -> counter (TTL_GRACE)
+    client;<client-address> -> counter (TTL_GRACE)
         Index of all client addresses.
-    <client-address>:<address>:dns -> list of onames (ttl + TTL_GRACE)
+    <client-address>;<address>;dns -> list of onames (ttl + TTL_GRACE)
         List of FQDNs which an address resolves from.
-    <client-address>:<rname>:cname -> list of onames (TTL_GRACE)
+    <client-address>;<rname>;cname -> list of onames (TTL_GRACE)
         List of FQDNs which a CNAME resolves from.
-    <client-address>:orname>:nx -> counter (TTL_GRACE)
+    <client-address>;<oname>;nx -> counter (TTL_GRACE)
         FQDNs which return NXDOMAIN.
 """
 
