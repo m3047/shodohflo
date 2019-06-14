@@ -19,7 +19,7 @@ Dependencies for the agents are:
 
 * dnspython (mandatory for the dns agent, optional for pcap)
 * dpkt (mandatory for pcap)
-* a local caching resolving compiled with _dnstap_ support (mandatory for dns)
+* a local caching resolver compiled with _dnstap_ support (mandatory for dns)
 * redis
 
 Dependencies for the `app/` at the present time (may change in the future) are:
