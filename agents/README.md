@@ -53,3 +53,27 @@ Type "help", "copyright", "credits" or "license" for more information.
 Both agents have an option to use _dnspython_ for hostname resolution by setting `USE_DNSPTYHON = True`. This
 isn't an additional dependency for the DNS agent, but it is for the packet capture agent. Look in the
 configuraton file for further information.
+
+### Running at the command line
+
+Both agents should be runnable at the command line, a capability which has been preserved for debugging / troubleshooting purposes. This assumes that everything is properly configured (and it's an easy way to find out!).
+
+*DNS agent*
+
+```
+cd agents
+./dns_agent.py
+```
+
+*Packet Capture agent*
+
+```
+cd agents
+./pcap_agent.py <interface> <netmask-for-our-network>
+```
+
+Or for example:
+
+```
+./pcap_agent.py eth0 10.0.0.0/8
+```
