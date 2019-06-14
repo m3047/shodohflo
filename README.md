@@ -15,13 +15,18 @@ Aside from standard libraries the only dependencies for the core `shodohflo` pac
 * Python 3
 * dnspython
 
-Additionally for the `app/` (under construction) additional anticipated dependencies are:
+Dependencies for the agents are:
+
+* dnspython (mandatory for the dns agent, optional for pcap)
+* dpkt (mandatory for pcap)
+* a local caching resolving compiled with _dnstap_ support (mandatory for dns)
+* redis
+
+Dependencies for the `app/` at the present time (may change in the future) are:
 
 * redis
-* dpkt
+* dnspython (optional)
 * flask
-* flask_restful
-* a local caching resolving compiled with _dnstap_ support
 
 It is developed and tested on _Linux_. In particular the agents will likely not run except on _Linux_.
 
