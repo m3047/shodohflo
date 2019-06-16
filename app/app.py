@@ -16,6 +16,7 @@
 if __name__ == "__main__":
     from configuration import *
 else:
+    HTTP_HOST = 'localhost'
     HTTP_PORT = 3047
     REDIS_SERVER = 'localhost'
     USE_DNSPYTHON = False
@@ -278,4 +279,4 @@ def graph(origin):
                     message="")
 
 if __name__ == "__main__":
-    app.run(port=HTTP_PORT)
+    app.run(port=HTTP_PORT, host=HTTP_HOST)

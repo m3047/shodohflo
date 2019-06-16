@@ -1,4 +1,5 @@
-# The port used by Werkzeug.
+# The host and port used by Werkzeug.
+HTTP_HOST = 'localhost'
 HTTP_PORT = 3047
 
 REDIS_SERVER = 'localhost'
