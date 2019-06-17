@@ -144,7 +144,7 @@ class DnsTap(Consumer):
             return True
         if response.rcode() == rcode.NXDOMAIN:
             self.client_to_redis(client_address)
-            self.nx_to_redis(client_address, response.question[0].name.to_text())
+            self.nx_to_redis(client_address, response.question[0].name.to_text().lower())
             return True
         if response.rcode() != rcode.NOERROR:
             return True
@@ -154,11 +154,11 @@ class DnsTap(Consumer):
                 self.client_to_redis(client_address)
                 ttl = rrset.ttl
                 for rr in rrset:
-                    self.a_to_redis(client_address, name, ttl, rr.to_text())
+                    self.a_to_redis(client_address, name.lower(), ttl, rr.to_text().lower())
                 continue
             if rrset.rdtype == rdatatype.CNAME:
                 self.client_to_redis(client_address)
-                self.cname_to_redis(client_address, name, rrset[0].to_text())
+                self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
                 continue
         return True
     
