@@ -88,7 +88,7 @@ def get_socket(interface, network):
         ip_class = dpkt.ip.IP
     else:
         ip_type = ETH_IP6
-        ip_class = dpkt.ip.IP6
+        ip_class = dpkt.ip6.IP6
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_DGRAM)
     sock.bind((interface, ip_type))
 
