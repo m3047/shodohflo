@@ -15,6 +15,7 @@ It does indeed work with IP6! To get IP6 support with docker, you need to put so
     "fixed-cidr-v6": "fc00:1::/64",
     "ip-forward": false
 }
+```
 
 **There are two critical assumptions there:**
 
