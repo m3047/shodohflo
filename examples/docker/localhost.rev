@@ -1,0 +1,8 @@
+$TTL 84600
+@               IN      SOA     SOPHIA.M3047.NET.      M3047.M3047.NET. (
+                                            42 604800 86400 31536000 600
+                                        )
+
+                86400   NS      SOPHIA.M3047.NET.
+1               604800  PTR     LOCALHOST.
+

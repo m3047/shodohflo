@@ -1,0 +1,16 @@
+$TTL 84600
+@               IN      SOA     SERVER.TEST.      M3047.SERVER.TEST. (
+                                            42 604800 86400 31536000 600
+                                        )
+
+                86400   NS      SERVER.TEST.
+$ORIGIN TEST.
+SERVER		86400	A	127.0.0.1
+
+MACHINE-A	86400   A       10.0.0.1
+			AAAA	2001:db8:1::1
+
+MACHINE-B	86400	A	10.0.0.2
+			AAAA	2001:db8:1::2
+
+
