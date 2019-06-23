@@ -102,3 +102,7 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# bind.tgz, which might be used by Docker
+bind.tgz
+
