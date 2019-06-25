@@ -92,7 +92,7 @@ class Link(object):
     def depth(self, x=0):
         """Return the depth of the chain."""
         if self._depth is None:
-            if self.children:
+            if x < TOO_DEEP and self.children:
                 x = max((child.depth(x+1) for child in self.children))
             self._depth = x
         return self._depth
@@ -181,12 +181,19 @@ def muted(text,mute):
         fmt = '{}'
     return fmt.format(text)
 
-def render_chain(chain):
+def render_chain(chain, seen=None):
     """Render a single chain."""
+    if seen is None:
+        seen = set()
+    else:
+        seen = seen.copy()
+    if chain.artifact in seen:
+        return muted(chain.artifact, not chain.is_target)
+    seen.add(chain.artifact)
     return ''.join([
               muted(chain.artifact, not chain.is_target), chain.children and '&nbsp;&rarr; ' or '',
               '<div class="iblock">',
-                '<br/>'.join((render_chain(element) for element in chain.children)),
+                '<br/>'.join((render_chain(element,seen) for element in chain.children)),
               '</div>'
         ])
 
