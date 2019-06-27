@@ -32,7 +32,7 @@ import ipaddress
 import redis
 from flask import Flask, request, render_template, url_for, redirect
 
-from redis_data import get_all_clients, get_client_data, \
+from redis_data import get_all_clients, get_client_data, merge_mappings, \
                        DNSArtifact, CNAMEArtifact, NXDOMAINArtifact, NetflowArtifact
 
 app = Flask(__name__)
@@ -103,20 +103,18 @@ class LinkTerminals(Link):
     Most chains end naturally when there are no more links to follow. In some cases
     however we may want to affirmatively tag something as terminal.
     """
-    pass
-
+    def depth(self, x=0):
+        """Terminals shouldn't count towards depth."""
+        x -= 1
+        if x < 0:
+            x = 0
+        return x
+    
 class NXDOMAINLink(LinkTerminals):
     """Represents an oname for which an NXDOMAIN answer was affirmatively seen."""
     def __init__(self):
         Link.__init__(self,'NXDOMAIN')
         return
-    
-    def depth(self, x=0):
-        """NX terminals shouldn't count towards depth."""
-        x -= 1
-        if x < 0:
-            x = 0
-        return x
     
 def calc_prefix(arg, addresses):
     """Calculates the prefix for the list of addresses.
@@ -193,12 +191,15 @@ def render_chain(chain, seen=None):
     return ''.join([
               muted(chain.artifact, not chain.is_target), chain.children and '&nbsp;&rarr; ' or '',
               '<div class="iblock">',
-                '<br/>'.join((render_chain(element,seen) for element in chain.children)),
+                '<br/>'.join((render_chain(element,seen) for element in sorted(chain.children,key=lambda x:x.artifact))),
               '</div>'
         ])
 
 def render_chains(origin_type, data, target):
-    """Render all chains."""
+    """Render all chains.
+    
+    data is a list of items from the redis_data.Artifact factory (ClientArtifacts).
+    """
     if target == '--all--':
         target = None
     else:
@@ -214,6 +215,11 @@ def render_chains(origin_type, data, target):
             artifact.update_origins(origin_type, all_origins)
         artifact.update_mappings(origin_type, all_mappings)
     
+    # Normalize mappings. In case something is mapped by both the target and something
+    # in the prefix, the target takes preference.
+    for k in sorted(all_mappings.keys()):
+        all_mappings[k] = merge_mappings( target, all_mappings[k] )
+        
     # Make some promises regarding the origins.
     for origin in all_origins.keys():
         all_origins[origin] = Link(origin, artifact_list=all_origins[origin])

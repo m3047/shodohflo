@@ -28,7 +28,9 @@ def get_all_clients(r_client):
 class ClientArtifact(object):
     """Base class for artifacts."""
 
-    def __init__(self, k, v):
+    def __init__(self, k=None, v=None):
+        if k is None:
+            return
         self.extract_key_data(k.split(';'))
         self.extract_value_data(v)
         return
@@ -138,6 +140,38 @@ class DNSArtifact(ListArtifact):
             return [ (oname, targeted) for oname in self.onames ]
         else:           # fqdn
             return [(str(self.remote_address), targeted)]
+    
+    @staticmethod
+    def merge(items, target):
+        """Note that all items in the list will be of the same type.
+        
+        The caller also arranges that the items are instances of this class.
+        """
+        item = items.pop()
+        merged = {}
+        k = str(item.remote_address)
+        merged[k] = item.copy(set)
+        for item in items:
+            k = str(item.remote_address)
+            if k not in merged:
+                merged[k] = item.copy(set)
+                continue
+            if item.is_targeted(target):
+                merged[k].client_address = item.client_address
+            merged[k].onames |= set(item.onames)
+        return [ artifact.onames_as_list() for artifact in merged.values() ]
+    
+    def copy(self, onames_type=list):
+        new = DNSArtifact()
+        new.client_address = self.client_address
+        new.remote_address = self.remote_address
+        new.onames = onames_type(self.onames)
+        return new
+    
+    def onames_as_list(self):
+        """Converts onames property from a set to a list, returning the instance."""
+        self.onames = list(self.onames)
+        return self
 
 class CNAMEArtifact(ListArtifact):
     """A CNAME artifact."""
@@ -171,6 +205,38 @@ class CNAMEArtifact(ListArtifact):
             return [ (oname, targeted) for oname in self.onames ]
         else:           # fqdn
             return [(self.rname, targeted)]
+
+    @staticmethod
+    def merge(items, target):
+        """Note that all items in the list will be of the same type.
+        
+        The caller also arranges that the items are instances of this class.
+        """
+        item = items.pop()
+        merged = {}
+        k = item.rname
+        merged[k] = item.copy(set)
+        for item in items:
+            k = item.rname
+            if k not in merged:
+                merged[k] = item.copy(set)
+                continue
+            if item.is_targeted(target):
+                merged[k].client_address = item.client_address
+            merged[k].onames |= set(item.onames)
+        return [ artifact.onames_as_list() for artifact in merged.values() ]
+    
+    def copy(self, onames_type=list):
+        new = CNAMEArtifact()
+        new.client_address = self.client_address
+        new.rname = self.rname
+        new.onames = onames_type(self.onames)
+        return new
+    
+    def onames_as_list(self):
+        """Converts onames property from a set to a list, returning the instance."""
+        self.onames = list(self.onames)
+        return self
 
 class NXDOMAINArtifact(CounterArtifact):
     """An FQDN for which DNS resolution failed."""
@@ -209,10 +275,37 @@ class NXDOMAINArtifact(CounterArtifact):
 
     def children(self, origin_type, target):
         if origin_type == 'fqdn':
-            return [(self.oname, self.is_targeted())]
+            return [(self.oname, self.is_targeted(target))]
         else:           # fqdn
             return []
 
+    @staticmethod
+    def merge(items, target):
+        """Note that all items in the list will be of the same type.
+        
+        The caller also arranges that the items are instances of this class.
+        """
+        item = items.pop()
+        merged = {}
+        k = item.oname
+        merged[k] = item.copy()
+        for item in items:
+            k = item.oname
+            if k not in merged:
+                merged[k] = item.copy()
+                continue
+            if item.is_targeted(target):
+                merged[k].client_address = item.client_address
+            merged[k].count += item.count
+        return merged.values()
+    
+    def copy(self):
+        new = NXDOMAINArtifact()
+        new.client_address = self.client_address
+        new.oname = self.oname
+        new.count = self.count
+        return new
+    
 class NetflowArtifact(CounterArtifact):
     """A Packet Capture artifact."""
 
@@ -246,8 +339,36 @@ class NetflowArtifact(CounterArtifact):
             #return
         return
     
-    def children(self, origin_type):
+    def children(self, origin_type, target):
         return []
+
+    @staticmethod
+    def merge(items, target):
+        """Note that all items in the list will be of the same type.
+        
+        The caller also arranges that the items are instances of this class.
+        """
+        item = items.pop()
+        merged = {}
+        k = '{}+{}'.format(item.remote_address, item.remote_port)
+        merged[k] = item.copy()
+        for item in items:
+            k = '{}+{}'.format(item.remote_address, item.remote_port)
+            if k not in merged:
+                merged[k] = item.copy()
+                continue
+            if item.is_targeted(target):
+                merged[k].client_address = item.client_address
+            merged[k].count += item.count
+        return merged.values()
+    
+    def copy(self):
+        new = NetflowArtifact()
+        new.client_address = self.client_address
+        new.remote_address = self.remote_address
+        new.remote_port = self.remote_port
+        new.count = self.count
+        return new
 
 ARTIFACT_MAPPER = dict(
         dns     = DNSArtifact,
@@ -290,3 +411,11 @@ def get_client_data(r_client, all_clients, network):
                 continue
             all_artifacts.append(artifact)
     return all_artifacts
+
+def merge_mappings(target, mapping):
+    """Merge mappings of the same Artifact type."""
+    collected = {}
+    for artifact in mapping:
+        artifact.append_to_mapping(type(artifact), collected)
+    return [ merged for k in collected.keys() for merged in k.merge(collected[k], target) ]
+    
