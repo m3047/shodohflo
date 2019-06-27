@@ -28,23 +28,23 @@ IPv6:
   OUR_3_CLIENT: 2001:db8:1::dd
 ```
 
-#### Screenshots
+### Screenshots
 
 Four screenshots are provided below, using the (default) `OUR_1_CIENT` address for both IPv4 and IPv6. This client
 references all of the sample data.
 
-##### IPv4 by address
+## IPv4 by address
 
 ![Screen Shot](ip4-by-address.png "screenshot")
 
-##### IPv4 by FQDN
+## IPv4 by FQDN
 
 ![Screen Shot](ip4-by-fqdn.png "screenshot")
 
-##### IPv6 by address
+## IPv6 by address
 
 ![Screen Shot](ip6-by-address.png "screenshot")
 
-##### IPv6 by FQDN
+## IPv6 by FQDN
 
 ![Screen Shot](ip6-by-fqdn.png "screenshot")
