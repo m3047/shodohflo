@@ -53,8 +53,7 @@ if __name__ == "__main__":
 else:
     REDIS_SERVER = 'localhost'
     USE_DNSPYTHON = False
-
-TTL_GRACE = 900
+    TTL_GRACE = 900
 
 if USE_DNSPYTHON:
     import dns.resolver as resolver
