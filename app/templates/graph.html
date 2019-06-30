@@ -6,7 +6,7 @@
   </head>
   <body>
     <h1>DNS &amp; Netflow Correlator</h1>
-    <form method="GET"><table>
+    <form method="GET" action="{{ url_for('graph', origin=origin) }}"><table>
       <tr>
         <td>
           <p>Origin:<br/>
