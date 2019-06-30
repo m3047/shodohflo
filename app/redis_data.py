@@ -112,6 +112,11 @@ class ListArtifact(ClientArtifact):
             self.update_fqdn_mappings(mappings)
         return
 
+    def onames_as_list(self):
+        """Converts onames property from a set to a list, returning the instance."""
+        self.onames = list(self.onames)
+        return self
+
 class DNSArtifact(ListArtifact):
     """A DNS artifact."""
 
@@ -167,11 +172,6 @@ class DNSArtifact(ListArtifact):
         new.remote_address = self.remote_address
         new.onames = onames_type(self.onames)
         return new
-    
-    def onames_as_list(self):
-        """Converts onames property from a set to a list, returning the instance."""
-        self.onames = list(self.onames)
-        return self
 
 class CNAMEArtifact(ListArtifact):
     """A CNAME artifact."""
@@ -233,11 +233,6 @@ class CNAMEArtifact(ListArtifact):
         new.onames = onames_type(self.onames)
         return new
     
-    def onames_as_list(self):
-        """Converts onames property from a set to a list, returning the instance."""
-        self.onames = list(self.onames)
-        return self
-
 class NXDOMAINArtifact(CounterArtifact):
     """An FQDN for which DNS resolution failed."""
 
