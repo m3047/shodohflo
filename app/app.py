@@ -131,18 +131,23 @@ def calc_prefix(arg, addresses):
     if not addresses:
         return None
     
+    v4max = int(ipaddress.IPv4Network('0.0.0.0/0').hostmask)
+    v6max = int(ipaddress.IPv6Network('::/0').hostmask)
+    v6bitsonly = v4max ^ v6max
+    
     # Prefix should be the same for both the ORed and ANDed values.
     ival = int(addresses[0])
     ored = ival
+    if ival <= v4max:
+        ival |= v6bitsonly
     anded = ival
     for address in addresses[1:]:
         ival = int(address)
         ored |= ival
+        if ival <= v4max:
+            ival |= v6bitsonly
         anded &= ival
         
-    v4max = int(ipaddress.IPv4Network('0.0.0.0/0').hostmask)
-    v6max = int(ipaddress.IPv6Network('::/0').hostmask)
-    
     if ored > v4max:
         all_bits = v6max
         n_bits = 128
