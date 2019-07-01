@@ -66,7 +66,7 @@ sincerely believe that (they were helpful when I was originally writing that cod
 tests look at what I did there, and put them in a `tests/` directory at the toplevel.
 
 However there is test _data_, intended for user interface testing. `app/testing/test_data.py` will load either
-IPv or IP6 data into _Redis_. This data includes not just ordinary flows, but NXDOMAIN, stuff which doesn't
+IP4 or IP6 data into _Redis_. This data includes not just ordinary flows, but NXDOMAIN, stuff which doesn't
 have a "hard" NXDOMAIN by doesn't resolve (ANSWER:0), and CNAME loops.
 
 ### Other protobuf definitions
