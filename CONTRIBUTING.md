@@ -65,6 +65,10 @@ In the time since there have been no (zero!) bugs reported or encountered. Tests
 sincerely believe that (they were helpful when I was originally writing that code). If you want to write
 tests look at what I did there, and put them in a `tests/` directory at the toplevel.
 
+However there is test _data_, intended for user interface testing. `app/testing/test_data.py` will load either
+IPv or IP6 data into _Redis_. This data includes not just ordinary flows, but NXDOMAIN, stuff which doesn't
+have a "hard" NXDOMAIN by doesn't resolve (ANSWER:0), and CNAME loops.
+
 ### Other protobuf definitions
 
 Other protobuf definitions (see `shodohflo.protobuf.dnstap`) will be accepted. Decide whether they belong here
