@@ -72,3 +72,5 @@ There are other examples as well, look in the `examples/` directory.
 ## Collaborators welcomed!
 
 Send me an email, or file an issue or PR.
+
+Please look at [proposed issues](https://github.com/m3047/shodohflo/issues?q=is%3Aissue+is%3Aopen+label%3Aproposal) and give feedback, vote them up or down (+1 / -1), or submit one of your own. Proposals won't be worked on without some third party expression of interest.
