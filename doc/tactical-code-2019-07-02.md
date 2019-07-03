@@ -1,5 +1,7 @@
 # Tactical Code: Using ShoDoHFlo for Dynamic Analysis
 
+Fred Morris, 02-Jul-2019
+
 ShoDoHFlo is a DNS and netflow correlator written in Python which consists of DNS and packet capture agents
 feeding a Redis database, and a web-based client for visualizing relationships between the two. Looking at
 DNS and netflows is a fundamental part of _Dynamic Analysis 101_.
