@@ -34,7 +34,7 @@ you run configure for BIND, you need to specify `--enable-dnstap`, probably like
 
     ./configure --with-libtool --enable-dnstap
 
-There are some prerequisites for frame streams and protobuf. You can look at this Dockerfile for inspiration.
+There are some prerequisites for frame streams and protobuf. You can look at [this Dockerfile](https://github.com/m3047/shodohflo/blob/master/examples/docker/Dockerfile) for inspiration.
 
 ### Where and how to run the DNS Agent
 
