@@ -272,10 +272,15 @@ def root():
 def graph(origin):
     """endpoint: /<origin>"""
 
-    arg_origin = request.args.get('origin','address')
-    if arg_origin not in ('address','fqdn'):
-        arg_origin = 'address'
-    origin = arg_origin
+    # NOTE: The endpoint route eventually converges to what's in the argument. IOW
+    # We could do a redirect but we're not, so the first response goes back to the
+    # submitted endpoint but with the correct endpoint in the submittal form. Oh well.
+    # Submitting to either origin endpoint without the origin arg works fine.
+    arg_origin = request.args.get('origin',None)
+    if arg_origin and arg_origin in ('address','fqdn'):
+        origin = arg_origin
+    if origin not in ('address','fqdn'):
+        origin = 'address'
 
     r = redis_client()
     all_clients = get_all_clients(r)
