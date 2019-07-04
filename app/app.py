@@ -205,11 +205,6 @@ def render_chains(origin_type, data, target):
     
     data is a list of items from the redis_data.Artifact factory (ClientArtifacts).
     """
-    if target == '--all--':
-        target = None
-    else:
-        target = ipaddress.ip_network(target)   # a single address network actually
-
     # Create mappings of artifacts. The keys in all_origins are a subset of what's in
     # all_mappings except when there is no mapping at all.
     all_origins =  {}
@@ -276,6 +271,9 @@ def graph(origin):
     # We could do a redirect but we're not, so the first response goes back to the
     # submitted endpoint but with the correct endpoint in the submittal form. Oh well.
     # Submitting to either origin endpoint without the origin arg works fine.
+
+    message = ""
+
     arg_origin = request.args.get('origin',None)
     if arg_origin and arg_origin in ('address','fqdn'):
         origin = arg_origin
@@ -285,21 +283,35 @@ def graph(origin):
     r = redis_client()
     all_clients = get_all_clients(r)
 
-    prefix = calc_prefix(request.args.get('prefix',''), all_clients)
-
-    filter = request.args.get('filter','--all--')
+    try:
+        prefix = calc_prefix(request.args.get('prefix',''), all_clients)
+    except ValueError:
+        message = "{} doesn't appear to be a valid prefix / network".format(request.args.get('prefix',''))
+        prefix = calc_prefix('', all_clients)
+    
+    try:
+        filter = request.args.get('filter','--all--')
+        if filter == '--all--':
+            target = None
+        else:
+            target = ipaddress.ip_network(filter)
+    except ValueError:
+        message = "{} doesn't appear to be a valid filter / address".format(filter)
+        filter = '--all--'
+        target = None
+            
     all = request.args.get('all', '')
     if all or filter == '--all--':
         data = get_client_data(r, all_clients, prefix)
     else:
-        data = get_client_data(r, all_clients, ipaddress.ip_network(filter))
+        data = get_client_data(r, all_clients, target)
     
     return render_template('graph.html',
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),
                     all=all,
-                    table=render_chains(origin, data, filter),
-                    message="")
+                    table=render_chains(origin, data, target),
+                    message=message)
 
 if __name__ == "__main__":
     app.run(port=HTTP_PORT, host=HTTP_HOST)
