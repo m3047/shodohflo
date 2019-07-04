@@ -9,5 +9,7 @@ div.iblock
         { display:inline-block; vertical-align:middle }
 
 .muted  { color:#888888 }
+.message
+        { background:#ffaaaa; font-weight:bold; text-align:center }
 .credits
         { margin-left:3em; margin-right:3em; color:#666666; font-size:80% }

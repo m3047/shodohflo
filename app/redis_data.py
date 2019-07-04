@@ -396,6 +396,9 @@ def get_client_data(r_client, all_clients, network):
     seen. Such records are invisible until the client which made the request(s)
     is seen again.
     """
+    if network is None:
+        return []
+
     all_artifacts = []
     for client in all_clients:
         if client not in network:
@@ -405,6 +408,7 @@ def get_client_data(r_client, all_clients, network):
             if artifact is None:
                 continue
             all_artifacts.append(artifact)
+
     return all_artifacts
 
 def merge_mappings(target, mapping):

@@ -38,7 +38,8 @@
       </tr>
       <tr>
         <td colspan="4">
-          <p>{{ message }}<input type="submit" name="update" value="Update"/></p>
+          {% if message %}<p class="message">{{ message }}</p>{% endif %}
+          <p><input type="submit" name="update" value="Update"/></p>
         </td>
       </tr>
     </table></form>
