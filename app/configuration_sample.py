@@ -10,3 +10,10 @@ REDIS_SERVER = 'localhost'
 # If you want to use hostnames and DNS, then you may want to set USE_DNSPTYHON
 # to True. Of course, dnspython has to be installed.
 USE_DNSPYTHON = False
+
+# Presentation templates. Templates consist of a template in templates/ and a
+# python module in renderers/ of the same name. For example: /templates/graph.html
+# and renderers/graph.py
+DEFAULT_TEMPLATE = 'graph'
+AVAILABLE_TEMPLATES = ['graph']
+

@@ -20,6 +20,8 @@ else:
     HTTP_PORT = 3047
     REDIS_SERVER = 'localhost'
     USE_DNSPYTHON = False
+    DEFAULT_TEMPLATE = 'graph'
+    AVAILABLE_TEMPLATES = ['graph']
     
 if USE_DNSPYTHON:
     import dns.resolver as resolver
@@ -27,6 +29,7 @@ if USE_DNSPYTHON:
 #import logging
 #logging.basicConfig(level=logging.INFO)
 
+import importlib
 import ipaddress
 
 import redis
@@ -176,31 +179,7 @@ def build_options(prefix, clients, selected):
             for address in sorted(addresses, key=lambda x: int(x))
            ]
 
-def muted(text,mute):
-    """Renders some text muted."""
-    if mute:
-        fmt = '<span class="muted">{}</span>'
-    else:
-        fmt = '{}'
-    return fmt.format(text)
-
-def render_chain(chain, seen=None):
-    """Render a single chain."""
-    if seen is None:
-        seen = set()
-    else:
-        seen = seen.copy()
-    if chain.artifact in seen:
-        return muted(chain.artifact, not chain.is_target)
-    seen.add(chain.artifact)
-    return ''.join([
-              muted(chain.artifact, not chain.is_target), chain.children and '&nbsp;&rarr; ' or '',
-              '<div class="iblock">',
-                '<br/>'.join((render_chain(element,seen) for element in sorted(chain.children,key=lambda x:x.artifact))),
-              '</div>'
-        ])
-
-def render_chains(origin_type, data, target):
+def render_chains(origin_type, data, target, render_chain):
     """Render all chains.
     
     data is a list of items from the redis_data.Artifact factory (ClientArtifacts).
@@ -262,18 +241,17 @@ def root():
     Redirects to '/address'.
     """
     return redirect(url_for('graph', origin='address'))
-    
+
 @app.route('/<origin>', methods=['GET'])
 def graph(origin):
     """endpoint: /<origin>"""
 
-    # NOTE: The endpoint route eventually converges to what's in the argument. IOW
-    # We could do a redirect but we're not, so the first response goes back to the
-    # submitted endpoint but with the correct endpoint in the submittal form. Oh well.
-    # Submitting to either origin endpoint without the origin arg works fine.
-
     message = ""
 
+    # NOTE: The endpoint route eventually converges to what's in the argument. IOW
+    # we could do a redirect but we're not, so the first response goes back to the
+    # submitted endpoint but with the correct endpoint in the submittal form. Oh well.
+    # Submitting to either origin endpoint without the origin arg works fine.
     arg_origin = request.args.get('origin',None)
     if arg_origin and arg_origin in ('address','fqdn'):
         origin = arg_origin
@@ -299,6 +277,12 @@ def graph(origin):
         message = "{} doesn't appear to be a valid filter / address".format(filter)
         filter = '--all--'
         target = None
+        
+    template = request.args.get('template',DEFAULT_TEMPLATE)
+    if template not in AVAILABLE_TEMPLATES:
+        message = "'{}' is not a recognized template.".format(template)
+        template = DEFAULT_TEMPLATE
+    render_chain = importlib.import_module('renderers.' + template).render_chain
             
     all = request.args.get('all', '')
     if all or filter == '--all--':
@@ -310,7 +294,7 @@ def graph(origin):
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),
                     all=all,
-                    table=render_chains(origin, data, target),
+                    table=render_chains(origin, data, target, render_chain),
                     message=message)
 
 if __name__ == "__main__":
