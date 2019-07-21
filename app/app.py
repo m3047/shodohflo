@@ -53,7 +53,7 @@ def redis_client():
 
 class Link(object):
     """A single link in a chain."""
-    def __init__(self, origin, is_target=True, artifact_list=None):
+    def __init__(self, origin, is_target=True):
         """Links in a chain.
         
         Origin (external) links are first created as promises, whereas internal links are
@@ -61,7 +61,6 @@ class Link(object):
         """
         self.artifact = origin
         self.is_target = is_target
-        self.artifact_list = artifact_list
         self.reference_count = 0
         self.children = []
         self._depth = None
@@ -201,7 +200,7 @@ def render_chains(origin_type, data, target, render_chain):
         
     # Make some promises regarding the origins.
     for origin in all_origins.keys():
-        all_origins[origin] = Link(origin, artifact_list=all_origins[origin])
+        all_origins[origin] = Link(origin)
     
     # Build origin chain fragments until they intersect another origin or
     # loop or die out.
