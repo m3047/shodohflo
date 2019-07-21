@@ -294,7 +294,8 @@ def graph(origin):
                     filter_options=build_options(prefix, all_clients, filter),
                     all=all,
                     table=render_chains(origin, data, target, render_chain),
-                    message=message)
+                    message=message,
+                    template=template)
 
 if __name__ == "__main__":
     app.run(port=HTTP_PORT, host=HTTP_HOST)
