@@ -54,15 +54,15 @@ def redis_client():
 class Link(object):
     """A single link in a chain.
     
-        Metadata:
+    Metadata:
 
-        Metadata which is potentially of use in the rendering operation can
-        be found in the metadata attribute. This is a dictionary containing the following
-        potential keys. Some of the keys are specific to a ClientArtifact subclass.
+    Metadata which is potentially of use in the rendering operation can
+    be found in the metadata attribute. This is a dictionary containing the following
+    potential keys. Some of the keys are specific to a ClientArtifact subclass.
 
-        clients     all: Set of all client addresses with this artifact.
-        types       all: Set of all artifact types as strings.
-        ports       NetflowArtifact: Set of port numbers associated with flows.
+    clients     all: Set of all client addresses with this artifact.
+    types       all: Set of all artifact types as strings.
+    ports       NetflowArtifact: Set of port numbers associated with flows.
     """
     def __init__(self, origin, observations=[], is_target=True):
         """Links in a chain.
