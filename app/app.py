@@ -52,7 +52,21 @@ def redis_client():
     return redis.client.Redis(redis_server, decode_responses=True)
 
 class Link(object):
-    """A single link in a chain."""
+    """A single link in a chain.
+    
+    metadata -- initialized by build()
+    -----------------------------------------------
+    
+    A number of attributes of the object are initialized by build() because they
+    require information from the underlying ClientArtifacts. These attributes
+    are metadata which is potentially of use in the rendering operation and can
+    be found in the metadata attribute. This is a dictionary containing the following
+    potential keys. Some of the keys are specific to a ClientArtifact subclass.
+    
+    clients     all: Set of all client addresses with this artifact.
+    types       all: Set of all artifact types as strings.
+    ports       NetflowArtifact: Set of port numbers associated with flows.
+    """
     def __init__(self, origin, is_target=True):
         """Links in a chain.
         
@@ -64,9 +78,11 @@ class Link(object):
         self.reference_count = 0
         self.children = []
         self._depth = None
+        self.metadata = dict(clients=set(), types=set(), ports=set())
         return
     
     def build(self, origin_type, origins, mappings, target, internal=None):
+        """Build the chain from the origin."""
         if internal is None:
             internal = set()
         if internal and self.artifact in origins:
@@ -74,14 +90,22 @@ class Link(object):
             link.reference_count += 1
             return link
 
-        if self.artifact in internal:   # loop detection
-            return self
-        internal.add(self.artifact)
-
         if self.artifact not in mappings:
             return self
 
+        if self.artifact in internal:   # loop detection
+            return self
+        internal.add(self.artifact)        
+
         for artifact in mappings[self.artifact]:
+
+            # Make additional metadata available for rendering.
+            md = self.metadata
+            md['clients'].add(str(artifact.client_address))
+            md['types'].add(str(type(artifact)).split("'")[1])
+            if isinstance(artifact, NetflowArtifact):
+                md['ports'].add(artifact.remote_port)
+
             if isinstance(artifact, NXDOMAINArtifact):
                 self.children.append(NXDOMAINLink())
                 continue
@@ -194,7 +218,8 @@ def render_chains(origin_type, data, target, render_chain):
         artifact.update_mappings(origin_type, all_mappings)
     
     # Normalize mappings. In case something is mapped by both the target and something
-    # in the prefix, the target takes preference.
+    # in the prefix, the target takes preference. After this there is AT MOST one of
+    # any particular subclass of ClientArtifact.
     for k in sorted(all_mappings.keys()):
         all_mappings[k] = merge_mappings( target, all_mappings[k] )
         
@@ -289,7 +314,7 @@ def graph(origin):
     else:
         data = get_client_data(r, all_clients, target)
     
-    return render_template('graph.html',
+    return render_template(template + '.html',
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),
                     all=all,
