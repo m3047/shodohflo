@@ -1,0 +1,28 @@
+body    { background:white }
+h1      { text-align:center }
+td      { padding-left:1em; padding-right:1em }
+td.cbx  { width: 15em }
+
+div.flows
+        { font-size: 80% }
+div.iblock
+        { display:inline-block; vertical-align:middle }
+
+.muted  { color:#888888 }
+
+div.artifact
+        { position:relative; display:inline }
+div.details
+        { display:none; position:absolute; left:1em; top:1.5em;
+          color:#44aa44; background-color:#eeeeff; padding:0.5em;
+          z-index:1
+        }
+div:hover > div.details
+        { display:inline }
+span.header
+        { text-decoration:underline }
+        
+.message
+        { background:#ffaaaa; font-weight:bold; text-align:center }
+.credits
+        { margin-left:3em; margin-right:3em; color:#666666; font-size:80% }

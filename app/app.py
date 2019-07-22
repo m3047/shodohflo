@@ -20,13 +20,16 @@ else:
     HTTP_PORT = 3047
     REDIS_SERVER = 'localhost'
     USE_DNSPYTHON = False
+    DEFAULT_TEMPLATE = 'graph'
+    AVAILABLE_TEMPLATES = ['graph']
     
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
-#import logging
-#logging.basicConfig(level=logging.INFO)
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
+import importlib
 import ipaddress
 
 import redis
@@ -49,8 +52,22 @@ def redis_client():
     return redis.client.Redis(redis_server, decode_responses=True)
 
 class Link(object):
-    """A single link in a chain."""
-    def __init__(self, origin, is_target=True, artifact_list=None):
+    """A single link in a chain.
+    
+    metadata -- initialized by build()
+    -----------------------------------------------
+    
+    A number of attributes of the object are initialized by build() because they
+    require information from the underlying ClientArtifacts. These attributes
+    are metadata which is potentially of use in the rendering operation and can
+    be found in the metadata attribute. This is a dictionary containing the following
+    potential keys. Some of the keys are specific to a ClientArtifact subclass.
+    
+    clients     all: Set of all client addresses with this artifact.
+    types       all: Set of all artifact types as strings.
+    ports       NetflowArtifact: Set of port numbers associated with flows.
+    """
+    def __init__(self, origin, observations=[], is_target=True):
         """Links in a chain.
         
         Origin (external) links are first created as promises, whereas internal links are
@@ -58,13 +75,18 @@ class Link(object):
         """
         self.artifact = origin
         self.is_target = is_target
-        self.artifact_list = artifact_list
         self.reference_count = 0
         self.children = []
         self._depth = None
+        md = dict(clients=set(), types=set(), ports=set())
+        for obs in observations:
+            for k in md.keys():
+                md[k] |= obs.metadata_for(k)
+        self.metadata = md
         return
     
     def build(self, origin_type, origins, mappings, target, internal=None):
+        """Build the chain from the origin."""
         if internal is None:
             internal = set()
         if internal and self.artifact in origins:
@@ -72,19 +94,21 @@ class Link(object):
             link.reference_count += 1
             return link
 
-        if self.artifact in internal:   # loop detection
-            return self
-        internal.add(self.artifact)
-
         if self.artifact not in mappings:
             return self
 
+        if self.artifact in internal:   # loop detection
+            return self
+        internal.add(self.artifact)        
+
         for artifact in mappings[self.artifact]:
+
             if isinstance(artifact, NXDOMAINArtifact):
                 self.children.append(NXDOMAINLink())
                 continue
             
-            self.children += [ Link(child,is_target).build(origin_type, origins, mappings, target, internal=internal)
+            self.children += [ Link(child, child in mappings and mappings[child] or [], is_target
+                                ).build(origin_type, origins, mappings, target, internal=internal)
                                for child,is_target in artifact.children(origin_type, target)
                              ]
         return self
@@ -176,31 +200,7 @@ def build_options(prefix, clients, selected):
             for address in sorted(addresses, key=lambda x: int(x))
            ]
 
-def muted(text,mute):
-    """Renders some text muted."""
-    if mute:
-        fmt = '<span class="muted">{}</span>'
-    else:
-        fmt = '{}'
-    return fmt.format(text)
-
-def render_chain(chain, seen=None):
-    """Render a single chain."""
-    if seen is None:
-        seen = set()
-    else:
-        seen = seen.copy()
-    if chain.artifact in seen:
-        return muted(chain.artifact, not chain.is_target)
-    seen.add(chain.artifact)
-    return ''.join([
-              muted(chain.artifact, not chain.is_target), chain.children and '&nbsp;&rarr; ' or '',
-              '<div class="iblock">',
-                '<br/>'.join((render_chain(element,seen) for element in sorted(chain.children,key=lambda x:x.artifact))),
-              '</div>'
-        ])
-
-def render_chains(origin_type, data, target):
+def render_chains(origin_type, data, target, render_chain):
     """Render all chains.
     
     data is a list of items from the redis_data.Artifact factory (ClientArtifacts).
@@ -215,14 +215,20 @@ def render_chains(origin_type, data, target):
             artifact.update_origins(origin_type, all_origins)
         artifact.update_mappings(origin_type, all_mappings)
     
+    for ok in all_origins.keys():
+        if ok in all_mappings: continue
+    #logging.debug('{} origin: {}'.format(ok, all_origins[ok]))
+    #logging.debug('{} mappings: {}'.format(ok, all_mappings[ok]))
+    
     # Normalize mappings. In case something is mapped by both the target and something
-    # in the prefix, the target takes preference.
+    # in the prefix, the target takes preference. After this there is AT MOST one of
+    # any particular subclass of ClientArtifact.
     for k in sorted(all_mappings.keys()):
         all_mappings[k] = merge_mappings( target, all_mappings[k] )
         
     # Make some promises regarding the origins.
     for origin in all_origins.keys():
-        all_origins[origin] = Link(origin, artifact_list=all_origins[origin])
+        all_origins[origin] = Link(origin, all_origins[origin])
     
     # Build origin chain fragments until they intersect another origin or
     # loop or die out.
@@ -262,18 +268,17 @@ def root():
     Redirects to '/address'.
     """
     return redirect(url_for('graph', origin='address'))
-    
+
 @app.route('/<origin>', methods=['GET'])
 def graph(origin):
     """endpoint: /<origin>"""
 
-    # NOTE: The endpoint route eventually converges to what's in the argument. IOW
-    # We could do a redirect but we're not, so the first response goes back to the
-    # submitted endpoint but with the correct endpoint in the submittal form. Oh well.
-    # Submitting to either origin endpoint without the origin arg works fine.
-
     message = ""
 
+    # NOTE: The endpoint route eventually converges to what's in the argument. IOW
+    # we could do a redirect but we're not, so the first response goes back to the
+    # submitted endpoint but with the correct endpoint in the submittal form. Oh well.
+    # Submitting to either origin endpoint without the origin arg works fine.
     arg_origin = request.args.get('origin',None)
     if arg_origin and arg_origin in ('address','fqdn'):
         origin = arg_origin
@@ -299,6 +304,12 @@ def graph(origin):
         message = "{} doesn't appear to be a valid filter / address".format(filter)
         filter = '--all--'
         target = None
+        
+    template = request.args.get('template',DEFAULT_TEMPLATE)
+    if template not in AVAILABLE_TEMPLATES:
+        message = "'{}' is not a recognized template.".format(template)
+        template = DEFAULT_TEMPLATE
+    render_chain = importlib.import_module('renderers.' + template).render_chain
             
     all = request.args.get('all', '')
     if all or filter == '--all--':
@@ -306,12 +317,13 @@ def graph(origin):
     else:
         data = get_client_data(r, all_clients, target)
     
-    return render_template('graph.html',
+    return render_template(template + '.html',
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),
                     all=all,
-                    table=render_chains(origin, data, target),
-                    message=message)
+                    table=render_chains(origin, data, target, render_chain),
+                    message=message,
+                    template=template)
 
 if __name__ == "__main__":
     app.run(port=HTTP_PORT, host=HTTP_HOST)
