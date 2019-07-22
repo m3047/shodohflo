@@ -18,3 +18,26 @@ mechanism.
 
 This is a _WSGI_ app. For security and other reasons you probably don't want to put the _Werkzeug_ app directly up
 on the internet. The _Flask_ documentation discusses numerous deployment options: http://flask.pocoo.org/docs/1.0/deploying/
+
+### Skins / Themes
+
+The skin which is used is determined by the `template` parameter provided with the GET request, or if not supplied by the
+`DEFAULT_TEMPLATE` configuration setting. The available templates are determined by the `AVAILABLE_TEMPLATES` configuration
+setting.
+
+A _skin_ consists of two items. Assuming that the name of the skin is `my_skin`:
+
+* **a renderer* in `renderers/`, with the name `my_skin.py`
+* **a template* in `templates/`, with the name `my_skin.html`
+
+In most cases the template will in turn reference CSS styles in `static/`.
+
+##### Shipped skins
+
+Two skins are shipped:
+
+* **graph** is the vanilla, very first version
+* **graph2** which is now the default, has rollovers which provide additional metadata:
+  * **clients** the "our network" addresses which generated the artifacts
+  * **types** the type of artifact; usually there is only one
+  * **ports** netflows, only used when the origin is _address_, provide a list of the remote ports
