@@ -27,8 +27,8 @@ setting.
 
 A _skin_ consists of two items. Assuming that the name of the skin is `my_skin`:
 
-* **a renderer* in `renderers/`, with the name `my_skin.py`
-* **a template* in `templates/`, with the name `my_skin.html`
+* **a renderer** in `renderers/`, with the name `my_skin.py`
+* **a template** in `templates/`, with the name `my_skin.html`
 
 In most cases the template will in turn reference CSS styles in `static/`.
 
