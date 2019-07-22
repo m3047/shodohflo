@@ -54,18 +54,15 @@ def redis_client():
 class Link(object):
     """A single link in a chain.
     
-    metadata -- initialized by build()
-    -----------------------------------------------
-    
-    A number of attributes of the object are initialized by build() because they
-    require information from the underlying ClientArtifacts. These attributes
-    are metadata which is potentially of use in the rendering operation and can
-    be found in the metadata attribute. This is a dictionary containing the following
-    potential keys. Some of the keys are specific to a ClientArtifact subclass.
-    
-    clients     all: Set of all client addresses with this artifact.
-    types       all: Set of all artifact types as strings.
-    ports       NetflowArtifact: Set of port numbers associated with flows.
+        Metadata:
+
+        Metadata which is potentially of use in the rendering operation can
+        be found in the metadata attribute. This is a dictionary containing the following
+        potential keys. Some of the keys are specific to a ClientArtifact subclass.
+
+        clients     all: Set of all client addresses with this artifact.
+        types       all: Set of all artifact types as strings.
+        ports       NetflowArtifact: Set of port numbers associated with flows.
     """
     def __init__(self, origin, observations=[], is_target=True):
         """Links in a chain.
