@@ -26,8 +26,8 @@ else:
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
-#import logging
-#logging.basicConfig(level=logging.INFO)
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 import importlib
 import ipaddress
@@ -67,7 +67,7 @@ class Link(object):
     types       all: Set of all artifact types as strings.
     ports       NetflowArtifact: Set of port numbers associated with flows.
     """
-    def __init__(self, origin, is_target=True):
+    def __init__(self, origin, observations=[], is_target=True):
         """Links in a chain.
         
         Origin (external) links are first created as promises, whereas internal links are
@@ -78,7 +78,11 @@ class Link(object):
         self.reference_count = 0
         self.children = []
         self._depth = None
-        self.metadata = dict(clients=set(), types=set(), ports=set())
+        md = dict(clients=set(), types=set(), ports=set())
+        for obs in observations:
+            for k in md.keys():
+                md[k] |= obs.metadata_for(k)
+        self.metadata = md
         return
     
     def build(self, origin_type, origins, mappings, target, internal=None):
@@ -99,18 +103,12 @@ class Link(object):
 
         for artifact in mappings[self.artifact]:
 
-            # Make additional metadata available for rendering.
-            md = self.metadata
-            md['clients'].add(str(artifact.client_address))
-            md['types'].add(str(type(artifact)).split("'")[1])
-            if isinstance(artifact, NetflowArtifact):
-                md['ports'].add(artifact.remote_port)
-
             if isinstance(artifact, NXDOMAINArtifact):
                 self.children.append(NXDOMAINLink())
                 continue
             
-            self.children += [ Link(child,is_target).build(origin_type, origins, mappings, target, internal=internal)
+            self.children += [ Link(child, child in mappings and mappings[child] or [], is_target
+                                ).build(origin_type, origins, mappings, target, internal=internal)
                                for child,is_target in artifact.children(origin_type, target)
                              ]
         return self
@@ -217,6 +215,11 @@ def render_chains(origin_type, data, target, render_chain):
             artifact.update_origins(origin_type, all_origins)
         artifact.update_mappings(origin_type, all_mappings)
     
+    for ok in all_origins.keys():
+        if ok in all_mappings: continue
+    #logging.debug('{} origin: {}'.format(ok, all_origins[ok]))
+    #logging.debug('{} mappings: {}'.format(ok, all_mappings[ok]))
+    
     # Normalize mappings. In case something is mapped by both the target and something
     # in the prefix, the target takes preference. After this there is AT MOST one of
     # any particular subclass of ClientArtifact.
@@ -225,7 +228,7 @@ def render_chains(origin_type, data, target, render_chain):
         
     # Make some promises regarding the origins.
     for origin in all_origins.keys():
-        all_origins[origin] = Link(origin)
+        all_origins[origin] = Link(origin, all_origins[origin])
     
     # Build origin chain fragments until they intersect another origin or
     # loop or die out.

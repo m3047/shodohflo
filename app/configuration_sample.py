@@ -14,6 +14,6 @@ USE_DNSPYTHON = False
 # Presentation templates. Templates consist of a template in templates/ and a
 # python module in renderers/ of the same name. For example: /templates/graph.html
 # and renderers/graph.py
-DEFAULT_TEMPLATE = 'graph'
-AVAILABLE_TEMPLATES = ['graph']
+DEFAULT_TEMPLATE = 'graph2'
+AVAILABLE_TEMPLATES = ['graph','graph2']
 
