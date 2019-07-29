@@ -26,8 +26,8 @@ else:
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
-import logging
-logging.basicConfig(level=logging.DEBUG)
+#import logging
+#logging.basicConfig(level=logging.DEBUG)
 
 import importlib
 import ipaddress
@@ -211,12 +211,7 @@ def render_chains(origin_type, data, target, render_chain):
         if target is None or artifact.client_address in target:
             artifact.update_origins(origin_type, all_origins)
         artifact.update_mappings(origin_type, all_mappings)
-    
-    for ok in all_origins.keys():
-        if ok in all_mappings: continue
-    #logging.debug('{} origin: {}'.format(ok, all_origins[ok]))
-    #logging.debug('{} mappings: {}'.format(ok, all_mappings[ok]))
-    
+        
     # Normalize mappings. In case something is mapped by both the target and something
     # in the prefix, the target takes preference. After this there is AT MOST one of
     # any particular subclass of ClientArtifact.
