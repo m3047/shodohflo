@@ -53,13 +53,15 @@ else:
     REDIS_SERVER = 'localhost'
     USE_DNSPYTHON = False
     LOG_LEVEL = None
+    TTL_GRACE = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
 
 CONTENT_TYPE = 'protobuf:dnstap.Dnstap'
 
-TTL_GRACE = 900         # 15 minutes
+if TTL_GRACE is None:
+    TTL_GRACE = 900         # 15 minutes
 
 if USE_DNSPYTHON:
     import dns.resolver as resolver

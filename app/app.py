@@ -26,8 +26,8 @@ else:
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
-import logging
-logging.basicConfig(level=logging.DEBUG)
+#import logging
+#logging.basicConfig(level=logging.DEBUG)
 
 import importlib
 import ipaddress
@@ -54,15 +54,15 @@ def redis_client():
 class Link(object):
     """A single link in a chain.
     
-        Metadata:
+    Metadata:
 
-        Metadata which is potentially of use in the rendering operation can
-        be found in the metadata attribute. This is a dictionary containing the following
-        potential keys. Some of the keys are specific to a ClientArtifact subclass.
+    Metadata which is potentially of use in the rendering operation can
+    be found in the metadata attribute. This is a dictionary containing the following
+    potential keys. Some of the keys are specific to a ClientArtifact subclass.
 
-        clients     all: Set of all client addresses with this artifact.
-        types       all: Set of all artifact types as strings.
-        ports       NetflowArtifact: Set of port numbers associated with flows.
+    clients     all: Set of all client addresses with this artifact.
+    types       all: Set of all artifact types as strings.
+    ports       NetflowArtifact: Set of port numbers associated with flows.
     """
     def __init__(self, origin, observations=[], is_target=True):
         """Links in a chain.
@@ -177,13 +177,14 @@ def calc_prefix(arg, addresses):
         n_bits = 32
         
     i = 0
-    mask = 2**i - 1
-    while mask <= ored:
-        mask ^= all_bits
+    low_bits = 2**i - 1
+    mask = low_bits ^ all_bits
+    while low_bits <= ored:
         if (anded & mask) == (ored & mask):
             break
         i += 1
-        mask = 2**i - 1
+        low_bits = 2**i - 1
+        mask = low_bits ^ all_bits
     
     return ipaddress.ip_network(((anded & mask), (n_bits - i)))
 
@@ -211,12 +212,7 @@ def render_chains(origin_type, data, target, render_chain):
         if target is None or artifact.client_address in target:
             artifact.update_origins(origin_type, all_origins)
         artifact.update_mappings(origin_type, all_mappings)
-    
-    for ok in all_origins.keys():
-        if ok in all_mappings: continue
-    #logging.debug('{} origin: {}'.format(ok, all_origins[ok]))
-    #logging.debug('{} mappings: {}'.format(ok, all_mappings[ok]))
-    
+        
     # Normalize mappings. In case something is mapped by both the target and something
     # in the prefix, the target takes preference. After this there is AT MOST one of
     # any particular subclass of ClientArtifact.

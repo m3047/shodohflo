@@ -15,3 +15,9 @@ import logging
 # Set this to a logging level to change it from the default of WARN.
 # LOG_LEVEL = logging.INFO
 LOG_LEVEL = None
+
+# This sets the minimum expire time for Redis entries. In the case of DNS
+# events this is added to the TTL of the artifact; in the case of packet
+# captures it is the expire time.
+TTL_GRACE = 900         # 15 minutes
+
