@@ -177,13 +177,14 @@ def calc_prefix(arg, addresses):
         n_bits = 32
         
     i = 0
-    mask = 2**i - 1
-    while mask <= ored:
-        mask ^= all_bits
+    low_bits = 2**i - 1
+    mask = low_bits ^ all_bits
+    while low_bits <= ored:
         if (anded & mask) == (ored & mask):
             break
         i += 1
-        mask = 2**i - 1
+        low_bits = 2**i - 1
+        mask = low_bits ^ all_bits
     
     return ipaddress.ip_network(((anded & mask), (n_bits - i)))
 
