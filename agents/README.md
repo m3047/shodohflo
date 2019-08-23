@@ -15,10 +15,11 @@ It takes no arguments, although you may need to alter `SOCKET_ADDRESS` or `REDIS
 #### expects only CLIENT_RESPONSE messages
 
 For best performance, the this script expects only CLIENT_RESPONSE type messages (see the DnsTap documentation).
-Basic configuration in `named.conf` might look like:
+Expected configuration in `named.conf` looks like:
 
 ```
 dnstap { client response; };
+dnstap-output unix "/tmp/dnstap";
 ```
 
 If you fail to do this then a warning message will be generated every time a new connection is extablished.
