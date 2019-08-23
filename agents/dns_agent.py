@@ -20,9 +20,10 @@ This script takes no arguments.
 Uses Dnstap to capture A and AAAA responses to specific addresses and send
 them to Redis. By default only Client Response type messages are processed
 and you'll get better performance if you configure your DNS server to only
-send such messages. The correct specification for BIND in named.conf is:
+send such messages. The expected specification for BIND in named.conf is:
 
     dnstap { client response; };
+    dnstap-output unix "/tmp/dnstap";
 
 If you don't restrict the message type to client responses, a warning message
 will be printed for every new connection established.
