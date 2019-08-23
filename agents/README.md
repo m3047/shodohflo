@@ -12,6 +12,18 @@ You can look in the `examples/` directory for a little more information about _d
 
 It takes no arguments, although you may need to alter `SOCKET_ADDRESS` or `REDIS_SERVER`.
 
+#### expects only CLIENT_RESPONSE messages
+
+For best performance, the this script expects only CLIENT_RESPONSE type messages (see the DnsTap documentation).
+Expected configuration in `named.conf` looks like:
+
+```
+dnstap { client response; };
+dnstap-output unix "/tmp/dnstap";
+```
+
+If you fail to do this then a warning message will be generated every time a new connection is extablished.
+
 ### pcap_agent.py
 
 Where you run this depends on your network topology. Due to the way it works it only captures traffic coming
@@ -32,10 +44,11 @@ tested with IP6.
 
 You may also need to alter `REDIS_SERVER`.
 
-### socket.getaddrinfo() unreliable
+### socket.getaddrinfo() observed unreliable (June 2019)
 
-_Redis_ calls `socket.getaddrinfo()` when a hostname is supplied. Unfortunately this causes issues when using
-DNS resolution, because DNS is supposed to be case insensitive and `getaddrinfo()` is not honoring that:
+_Redis_ calls `socket.getaddrinfo()` when a hostname is supplied. This has been observed to be case sensitive,
+causing issues when using DNS resolution, because DNS is supposed to be case insensitive and `getaddrinfo()`
+is not honoring that:
 
 ```
 # python3

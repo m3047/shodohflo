@@ -15,10 +15,18 @@
 
 """DNS Agent.
 
+This script takes no arguments.
+
 Uses Dnstap to capture A and AAAA responses to specific addresses and send
 them to Redis. By default only Client Response type messages are processed
 and you'll get better performance if you configure your DNS server to only
-send such messages.
+send such messages. The expected specification for BIND in named.conf is:
+
+    dnstap { client response; };
+    dnstap-output unix "/tmp/dnstap";
+
+If you don't restrict the message type to client responses, a warning message
+will be printed for every new connection established.
         
 Keys written to Redis:
 
@@ -95,6 +103,8 @@ class DnsTap(Consumer):
         logging.info('Accepting: {}'.format(data_type))
         if data_type != CONTENT_TYPE:
             logging.warn('Unexpected content type "{}", continuing...'.format(data_type))
+        # Re-enable since a new connection could have different settings.
+        self.performance_hint = True
         return True
 
     def client_to_redis(self, client_address):
@@ -135,15 +145,16 @@ class DnsTap(Consumer):
         
         By default the type is restricted to dnstap.Message.TYPE_CLIENT_RESPONSE.
         """
-        performance_hint = True
         message = dnstap.Dnstap(frame).field('message')[1]
+        if self.message_type and message.field('type')[1] != self.message_type:
+            if self.performance_hint:
+                logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
+                self.performance_hint = False
+            return True
+        # NOTE: Do these lookups AFTER verifying that we have the correct message type!
         response = message.field('response_message')[1]
         client_address = message.field('query_address')[1]
-        if self.message_type and message.field('type')[1] != self.message_type:
-            if performance_hint:
-                logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
-                performance_hint = False
-            return True
+
         if response.rcode() == rcode.NXDOMAIN:
             self.client_to_redis(client_address)
             self.nx_to_redis(client_address, response.question[0].name.to_text().lower())
