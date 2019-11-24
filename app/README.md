@@ -19,6 +19,21 @@ mechanism.
 This is a _WSGI_ app. For security and other reasons you probably don't want to put the _Werkzeug_ app directly up
 on the internet. The _Flask_ documentation discusses numerous deployment options: http://flask.pocoo.org/docs/1.0/deploying/
 
+##### Bookmarking
+
+I find it useful to bookmark the URI for filtered client data on that particular device. The URI for a client typically follows
+this pattern:
+
+    http://<server>:<port>/address?prefix=<network>&filter=<client-address>&all=all
+    
+* **server**: The location where this app is running.
+* **port**: The port the app is running on
+* **network**: A network, specified as `<ip-address>/<bits>`, for example `10.0.0.0%2F24` should be specified to represent `10.0.0.0/24`. It is necessary to URL escape the `/` character; use `%2F` instead.
+* **client-address** The address of the client of interest.
+* **all=all** Allows information about other clients to be used to fill in missing information for this client.
+
+The app uses `GET`, so all of the above arguments (and a few more) will be present in the URL; you can probably just bookmark the page while looking at it, and then edit the resulting URL to remove extraneous stuff.
+
 ### Skins / Themes
 
 The skin which is used is determined by the `template` parameter provided with the GET request, or if not supplied by the
@@ -41,6 +56,28 @@ Two skins are shipped:
   * **clients** the "our network" addresses which generated the artifacts
   * **types** the type of artifact; usually there is only one
   * **ports** netflows, only used when the origin is _address_, provide a list of the remote ports
+
+### UI Elements
+
+##### Origin
+
+Allows switching between netflow or DNS -first views of artifact chains.
+
+##### Prefix
+
+This the network prefix encompassing all observed "our network" clients. You can override it to make it larger or smaller. If not supplied, it is calculated.
+
+##### Filter By
+
+This dropdown enumerates all of the observed "our network" clients. You can use it to restrict the display to a single client.
+
+##### Show resolution from all addresses in the prefix
+
+If checked, then the client specified with _Filter By_ is required to originate a chain, but relevant information from other clients is added to the chain. Information from other clients is displayed grayed out.
+
+##### Update
+
+Refreshes the current view.
 
 ##### Clear
 
