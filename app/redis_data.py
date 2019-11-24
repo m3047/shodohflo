@@ -446,6 +446,18 @@ def get_client_data(r_client, all_clients, network):
 
     return all_artifacts
 
+def clear_client_data(r_client, target, all_clients):
+    """Clear all data for the target.
+    
+    The target is mapped from the filter in the UI.
+    """
+    for client in all_clients:
+        if target and client not in target:
+            continue
+        for k in r_client.keys('{};*'.format(str(client))):
+            r_client.delete(k)
+    return
+
 def merge_mappings(target, mapping):
     """Merge mappings of the same Artifact type."""
     collected = {}

@@ -41,3 +41,9 @@ Two skins are shipped:
   * **clients** the "our network" addresses which generated the artifacts
   * **types** the type of artifact; usually there is only one
   * **ports** netflows, only used when the origin is _address_, provide a list of the remote ports
+
+##### Clear
+
+The _Clear_ button will clear collected data for the address specified in _Filter_, and if _Filter_ is set to
+`--all--` then all data is cleared.
+
