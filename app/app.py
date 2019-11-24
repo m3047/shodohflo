@@ -35,7 +35,7 @@ import ipaddress
 import redis
 from flask import Flask, request, render_template, url_for, redirect
 
-from redis_data import get_all_clients, get_client_data, merge_mappings, \
+from redis_data import get_all_clients, get_client_data, clear_client_data, merge_mappings, \
                        DNSArtifact, CNAMEArtifact, NXDOMAINArtifact, NetflowArtifact
 
 app = Flask(__name__)
@@ -303,6 +303,9 @@ def graph(origin):
         message = "'{}' is not a recognized template.".format(template)
         template = DEFAULT_TEMPLATE
     render_chain = importlib.import_module('renderers.' + template).render_chain
+    
+    if request.args.get('clear',False):
+        clear_client_data(r, target, all_clients)
             
     all = request.args.get('all', '')
     if all or filter == '--all--':
