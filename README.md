@@ -4,7 +4,9 @@ There's a perfectly good _dnstap_ dissector here. You'll find it in `shodohflo/`
 
 # shodohflo
 
-Ultimately this is going to be a DNS and netflow (IP address) correlator. It also includes pure Python implementations of Frame Streams and Protobuf, useful in their own right.
+This a DNS and netflow (IP address) correlator. _DNS_ is the service which turns a web site name into an address which your computer can connect to (it also does other things, and has indirection). A _netflow_ is the observed fact of two computers at different addresses exchanging data. Typically a DNS lookup is done to find the address, and then a connection with the address is created and data is exchanged. It's possible for an application to explicitly connect with an address without performing a DNS lookup.
+
+It also includes pure Python implementations of Frame Streams and Protobuf, useful in their own right.
 
 _Dnstap_ is a technology for DNS traffic capture within a DNS server, therefore capturing both UDP and TCP queries and responses with fidelity. http://dnstap.info/
 
