@@ -42,8 +42,6 @@ from os import path
 import time
 import logging
 
-import ctypes
-import ctypes.util
 import struct
 import socket
 import ipaddress
@@ -95,8 +93,10 @@ def get_socket(interface, network):
     sock.bind((interface, ip_type))
 
     # All of the rest of this is to set the socket into promiscuous mode.
-    libc = ctypes.CDLL(ctypes.util.find_library('c'))
-    if_number = libc.if_nametoindex(ctypes.c_char_p(interface.encode()))
+    try:
+        if_number = socket.if_nametoindex(interface)
+    except OSError:
+        if_number = 0
     if not if_number:
         logging.error("Interface number not available, unable to set promiscuous mode.")
     else:
