@@ -2,6 +2,8 @@
 
 There's a perfectly good _dnstap_ dissector here. You'll find it in `shodohflo/`, with an example: `examples/tap_example.py`.
 
+Look in `app/` for screenshots from the web reporting interface.
+
 # shodohflo
 
 This a DNS and netflow (IP address) correlator. _DNS_ is the service which turns a web site name into an address which your computer can connect to (it also does other things, and has indirection). A _netflow_ is the observed fact of two computers at different addresses exchanging data. Typically a DNS lookup is done to find the address, and then a connection with the address is created and data is exchanged. It's possible for an application to explicitly connect with an address without performing a DNS lookup.
