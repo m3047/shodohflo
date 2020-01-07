@@ -58,12 +58,15 @@ Data frames are then sent for an indeterminate period of time.
 
 import os
 import socket
+import asyncio
+from concurrent.futures import CancelledError
 
 FSTRM_CONTROL_ACCEPT = 1
 FSTRM_CONTROL_START = 2
 FSTRM_CONTROL_STOP = 3
 FSTRM_CONTROL_READY = 4
 FSTRM_CONTROL_FINISH = 5
+FSTRM_DATA_FRAME = 99
 
 FSTRM_CONTROL_FIELD_CONTENT_TYPE = 1
 
@@ -90,7 +93,10 @@ class StreamingSocket(object):
         pass
     
 class UnixSocket(StreamingSocket):
-    """A Unix Domain socket."""
+    """A Unix Domain socket.
+    
+    For use with Server.listen().
+    """
     
     def __init__(self, path):
         """Initialize
@@ -100,17 +106,32 @@ class UnixSocket(StreamingSocket):
         self.path = path
         return
     
-    def get_socket(self):
+    def clean_path(self):
         try:
             os.unlink(self.path)
         except OSError:
             if os.path.exists(self.path):
                 raise
+    
+    def get_socket(self):
+        self.clean_path()
 
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.bind(self.path)
         
         return sock
+
+class AsyncUnixSocket(UnixSocket):
+    """An asyncio Unix Domain server.
+    
+    For use with Server.listen_asyncio().
+    """
+    
+    def get_socket(self, callback, loop):
+        self.clean_path()
+
+        return loop.run_until_complete(
+                   asyncio.start_unix_server(callback, self.path, loop=loop))
 
 class Consumer(object):
     """A data consumer."""
@@ -143,27 +164,20 @@ class Consumer(object):
 
 UNSIGNED_BIG_ENDIAN = dict(byteorder='big', signed=False)
 
-class Server(object):
-    """A Frame Stream server."""
-    
-    def __init__(self,stream,consumer,data_type=None,recv_size=1024):
-        """Initialize the server.
-        
-        stream: a StreamingSocket
-        consumer: a function which will be called with the contents of each data frame.
-        data_type: type of payload. If not supplied, then whatever the client
-                advertises is sent back as acceptable.
-        recv_size: maximum number of bytes to accept in a single chunk.
-        """
-        self.sock = stream.get_socket()
-        self.consumer = consumer
-        self.data_type = data_type
-        self.recv_size = recv_size
-        self.receiving_data = False
+class DataProcessor(object):
+    """A stream data processor."""
+    def __init__(self, data_type):
         self.buffer = bytes()
+        self.receiving_data = False
+        self.running = True
+        self.data_type = data_type
         return
     
-    def connection_done(self):
+    def append(self, data):
+        self.buffer += data
+        return
+
+    def connection_done(self, consumer):
         """Called to perform internal cleanup when a connection closes."""
         if self.receiving_data:
             self.consumer.finished(self.buffer)
@@ -173,6 +187,10 @@ class Server(object):
     
     def frame_ready(self):
         """Is a complete frame ready in the buffer?"""
+        
+        if not self.running:
+            return True
+
         buffered = self.buffer
 
         # At least four bytes for the payload length?
@@ -238,11 +256,25 @@ class Server(object):
             
         return
     
-    def process_frame(self, conn):
+    async def schedule_consumer(self, consumer, frame):
+        """Wrapper for Consumer.consume()."""
+
+        if not consumer.consume(frame):
+            self.running = False
+        return
+    
+    def process_frame(self, conn, consumer, loop=None):
         """Process a frame of data."""
         
+        if not self.running:
+            return False
+        
         if not self.is_control_frame:
-            return self.consumer.consume(self.frame)
+            if loop:
+                asyncio.run_coroutine_threadsafe(self.schedule_consumer(consumer, self.frame), loop)
+                return FSTRM_DATA_FRAME
+            else:
+                return consumer.consume(self.frame) and FSTRM_DATA_FRAME or False
         
         control_type = int.from_bytes(self.frame[:4], **UNSIGNED_BIG_ENDIAN)
         frame = self.frame[4:]
@@ -255,23 +287,32 @@ class Server(object):
             field_bytes = self.data_type.encode()
             field_length = len(field_bytes)
             
-            conn.sendall(
-                    (0).to_bytes(4, **UNSIGNED_BIG_ENDIAN) +
-                    (field_length + 12).to_bytes(4, **UNSIGNED_BIG_ENDIAN) +
-                    FSTRM_CONTROL_ACCEPT.to_bytes(4, **UNSIGNED_BIG_ENDIAN) +
-                    FSTRM_CONTROL_FIELD_CONTENT_TYPE.to_bytes(4, **UNSIGNED_BIG_ENDIAN) +
-                    field_length.to_bytes(4, **UNSIGNED_BIG_ENDIAN) +
+            payload = b''.join((
+                    (0).to_bytes(4, **UNSIGNED_BIG_ENDIAN),
+                    (field_length + 12).to_bytes(4, **UNSIGNED_BIG_ENDIAN),
+                    FSTRM_CONTROL_ACCEPT.to_bytes(4, **UNSIGNED_BIG_ENDIAN),
+                    FSTRM_CONTROL_FIELD_CONTENT_TYPE.to_bytes(4, **UNSIGNED_BIG_ENDIAN),
+                    field_length.to_bytes(4, **UNSIGNED_BIG_ENDIAN),
                     field_bytes
-                )
+                ))
+
+            if loop:
+                conn.write(payload)
+                # To get around restrictions in the python implementation of asyncio
+                # which require any method calling await to have been declared async.
+                # Part 1 of 2...
+                #await conn.drain()
+            else:
+                conn.sendall(payload)
         
-            return True
+            return control_type
         
         # If START then let the consumer know...
         if control_type == FSTRM_CONTROL_START:
             
             self.content_type_payload(frame)
             
-            return self.consumer.accepted(self.data_type)
+            return consumer.accepted(self.data_type) and control_type or False
         
         # if STOP then stop...
         if control_type == FSTRM_CONTROL_STOP:
@@ -279,24 +320,117 @@ class Server(object):
             return False
         
         raise BadControlTypeError('Control type: {}'.format(control_type))
+
+async def close_tasks(tasks):
+    all_tasks = asyncio.gather(*tasks)
+    all_tasks.cancel()
+    try:
+        await all_tasks
+    except CancelledError:
+        pass
+    return
     
+class Server(object):
+    """A Frame Stream server."""
+    
+    def __init__(self,stream,consumer,loop=None,data_type=None,recv_size=1024):
+        """Initialize the server.
+        
+        stream: a StreamingSocket
+        consumer: Consumer which will be called with the contents of each data frame.
+        loop: if loop is supplied, then an asyncio server is created.
+        data_type: type of payload. If not supplied, then whatever the client
+                advertises is sent back as acceptable.
+        recv_size: maximum number of bytes to accept in a single chunk.
+        """
+        if loop:
+            self.server = stream.get_socket(process_data, loop, limit=recv_size)
+        else:
+            self.sock = stream.get_socket()
+        self.loop = loop
+        self.consumer = consumer
+        self.data_type = data_type
+        self.recv_size = recv_size
+        return
+        
     def listen(self):
         """Starts listening on the socket."""
         self.sock.listen(1)
-        while True:
-            conn, client = self.sock.accept()
-            active = True
-            while active:
-                data = conn.recv(self.recv_size)        # type(data) == bytes
-                if not data:
-                    self.connection_done()
-                    break
-                self.buffer += data
-                while self.frame_ready():
-                    if not self.process_frame(conn):
-                        self.connection_done()
-                        active = False
+        try:
+            while True:
+                conn, client = self.sock.accept()
+                processor = DataProcessor(self.data_type)
+                active = True
+                while active:
+                    data = conn.recv(self.recv_size)        # type(data) == bytes
+                    if not data:
+                        processor.connection_done(self.consumer)
                         break
-            conn.close()
+                    processor.append(data)
+                    while processor.frame_ready():
+                        if not processor.process_frame(conn, self.consumer):
+                            processor.connection_done(self.consumer)
+                            active = False
+                            break
+                conn.close()
+        except KeyboardInterrupt:
+            pass
+        return
+            
+    async def process_data(self, reader, writer):
+        processor = DataProcessor(self.data_type)
+        active = True
+        while active:
+            data = await reader.read()
+            if not data:
+                processor.connection_done(self.consumer)
+                break
+            processor.append(data)
+            while processor.frame_ready():
+                status = processor.process_frame(writer, self.consumer, loop=self.loop)
+                if not status:
+                    processor.connection_done(self.consumer)
+                    active = False
+                    break
+                elif status == FSTRM_CONTROL_READY:
+                    # To get around restrictions in the python implementation of asyncio
+                    # which require any method calling await to have been declared async.
+                    # Part 2 of 2...
+                    await conn.drain()
 
+        writer.close()
+        return
 
+    def run_forever(self):
+        """Called internally by listen_asyncio() to process the stream.
+        
+        Broken out as a separate method in case someone wants to override
+        the try block used to run the loop. 
+        """
+        
+        tasks = None
+        try:
+            self.loop.run_forever()
+        except (KeyboardInterrupt, Exception) as e:
+            tasks = asyncio.Task.all_tasks(self.loop)
+
+        if tasks:
+            loop.run_until_complete(close_tasks(tasks))
+
+        return
+        
+    def listen_asyncio(self):
+        """Listens using asyncio.
+        
+        Consumer.consume() will be called as a coroutine in the supplied event loop.
+        The code here supplies the wrapper, your Consumer implementation doesn't
+        need to change although odds are you're changing it to take advantage of
+        asyncio. ;-)
+        """
+        self.run_forever()
+        self.server.close()
+        loop.run_until_complete(self.server.wait_closed())
+        loop.close()
+        
+        return
+        
