@@ -165,7 +165,11 @@ class Consumer(object):
 UNSIGNED_BIG_ENDIAN = dict(byteorder='big', signed=False)
 
 class DataProcessor(object):
-    """A stream data processor."""
+    """A stream data processor.
+    
+    Each connection gets its own instance, as it manages buffering and frame
+    reassembly for the stream.
+    """
     def __init__(self, data_type):
         self.buffer = bytes()
         self.receiving_data = False
@@ -217,7 +221,6 @@ class DataProcessor(object):
             self.is_control_frame = True
             self.frame = buffered[:payload_length]
             self.buffer = buffered[payload_length:]
-        
             return True
         
         # Otherwise it is data.
@@ -227,7 +230,6 @@ class DataProcessor(object):
         self.is_control_frame = False
         self.frame = buffered[:payload_length]
         self.buffer = buffered[payload_length:]
-    
         return True
     
     def content_type_payload(self, frame):
@@ -265,7 +267,6 @@ class DataProcessor(object):
     
     def process_frame(self, conn, consumer, loop=None):
         """Process a frame of data."""
-        
         if not self.running:
             return False
         
@@ -344,7 +345,7 @@ class Server(object):
         recv_size: maximum number of bytes to accept in a single chunk.
         """
         if loop:
-            self.server = stream.get_socket(process_data, loop, limit=recv_size)
+            self.server = stream.get_socket(self.process_data, loop)
         else:
             self.sock = stream.get_socket()
         self.loop = loop
@@ -378,10 +379,14 @@ class Server(object):
         return
             
     async def process_data(self, reader, writer):
+        """Logically speaking part of listen_asyncio().
+        
+        This is the callback when a connection is established.
+        """
         processor = DataProcessor(self.data_type)
         active = True
         while active:
-            data = await reader.read()
+            data = await reader.read(self.recv_size)
             if not data:
                 processor.connection_done(self.consumer)
                 break
@@ -396,7 +401,7 @@ class Server(object):
                     # To get around restrictions in the python implementation of asyncio
                     # which require any method calling await to have been declared async.
                     # Part 2 of 2...
-                    await conn.drain()
+                    await writer.drain()
 
         writer.close()
         return
@@ -415,7 +420,7 @@ class Server(object):
             tasks = asyncio.Task.all_tasks(self.loop)
 
         if tasks:
-            loop.run_until_complete(close_tasks(tasks))
+            self.loop.run_until_complete(close_tasks(tasks))
 
         return
         
@@ -429,8 +434,8 @@ class Server(object):
         """
         self.run_forever()
         self.server.close()
-        loop.run_until_complete(self.server.wait_closed())
-        loop.close()
+        self.loop.run_until_complete(self.server.wait_closed())
+        self.loop.close()
         
         return
         
