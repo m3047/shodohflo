@@ -54,6 +54,15 @@ that the client will begin sending data.
 Data frames are then sent for an indeterminate period of time.
 
 * <- STOP when a client is done it sends this control frame
+
+The PRINT_ Constants
+--------------------
+
+The PRINT_... constants control various debugging output. They can be
+set to a print function which accepts a string, for example:
+
+    PRINT_THIS = logging.debug
+    PRINT_THAT = print
 """
 
 import os
@@ -69,6 +78,9 @@ FSTRM_CONTROL_FINISH = 5
 FSTRM_DATA_FRAME = 99
 
 FSTRM_CONTROL_FIELD_CONTENT_TYPE = 1
+
+# Start/end of coroutines.
+PRINT_COROUTINE_ENTRY_EXIT = None
 
 class FieldTypeMismatchError(TypeError):
     pass
@@ -260,9 +272,13 @@ class DataProcessor(object):
     
     async def schedule_consumer(self, consumer, frame):
         """Wrapper for Consumer.consume()."""
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("START schedule_consumer")
 
         if not consumer.consume(frame):
             self.running = False
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("END schedule_consumer")
         return
     
     def process_frame(self, conn, consumer, loop=None):
@@ -322,15 +338,6 @@ class DataProcessor(object):
         
         raise BadControlTypeError('Control type: {}'.format(control_type))
 
-async def close_tasks(tasks):
-    all_tasks = asyncio.gather(*tasks)
-    all_tasks.cancel()
-    try:
-        await all_tasks
-    except CancelledError:
-        pass
-    return
-    
 class Server(object):
     """A Frame Stream server."""
     
@@ -383,44 +390,63 @@ class Server(object):
         
         This is the callback when a connection is established.
         """
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("START process_data")
         processor = DataProcessor(self.data_type)
         active = True
         while active:
-            data = await reader.read(self.recv_size)
-            if not data:
-                processor.connection_done(self.consumer)
-                break
-            processor.append(data)
-            while processor.frame_ready():
-                status = processor.process_frame(writer, self.consumer, loop=self.loop)
-                if not status:
+            try:
+                data = await reader.read(self.recv_size)
+                if not data:
                     processor.connection_done(self.consumer)
-                    active = False
                     break
-                elif status == FSTRM_CONTROL_READY:
-                    # To get around restrictions in the python implementation of asyncio
-                    # which require any method calling await to have been declared async.
-                    # Part 2 of 2...
-                    await writer.drain()
+                processor.append(data)
+                while processor.frame_ready():
+                    status = processor.process_frame(writer, self.consumer, loop=self.loop)
+                    if not status:
+                        processor.connection_done(self.consumer)
+                        active = False
+                        break
+                    elif status == FSTRM_CONTROL_READY:
+                        # To get around restrictions in the python implementation of asyncio
+                        # which require any method calling await to have been declared async.
+                        # Part 2 of 2...
+                        await writer.drain()
+            except (KeyboardInterrupt, CancelledError):
+                # This is usually a CancelledError caused by the KeyboardInterrupt,
+                # not the actual KeyboardInterrupt.
+                active = False
 
         writer.close()
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("END process_data")        
         return
 
+    @staticmethod
+    async def close_tasks(tasks):
+        all_tasks = asyncio.gather(*tasks)
+        all_tasks.cancel()
+        try:
+            await all_tasks
+        except CancelledError:
+            pass
+        return
+        
     def run_forever(self):
         """Called internally by listen_asyncio() to process the stream.
         
         Broken out as a separate method in case someone wants to override
-        the try block used to run the loop. 
+        the try block used to run the loop or the task cleanup in the
+        immediate aftermath.
         """
-        
-        tasks = None
         try:
             self.loop.run_forever()
-        except (KeyboardInterrupt, Exception) as e:
-            tasks = asyncio.Task.all_tasks(self.loop)
+        except KeyboardInterrupt:
+            pass
 
+        tasks = asyncio.Task.all_tasks(self.loop)
         if tasks:
-            self.loop.run_until_complete(close_tasks(tasks))
+            self.loop.run_until_complete(self.close_tasks(tasks))
 
         return
         
@@ -433,8 +459,10 @@ class Server(object):
         asyncio. ;-)
         """
         self.run_forever()
+
         self.server.close()
         self.loop.run_until_complete(self.server.wait_closed())
+
         self.loop.close()
         
         return

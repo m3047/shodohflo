@@ -40,6 +40,16 @@ Keys written to Redis:
         List of FQDNs which a CNAME resolves from.
     <client-address>;<oname>;nx -> counter (TTL_GRACE)
         FQDNs which return NXDOMAIN.
+
+The PRINT_ Constants
+--------------------
+
+The PRINT_... constants control various debugging output. They can be
+set to a print function which accepts a string, for example:
+
+    PRINT_THIS = logging.debug
+    PRINT_THAT = print
+
 """
 
 import sys
@@ -78,6 +88,9 @@ if TTL_GRACE is None:
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
+# Start/end of coroutines.
+PRINT_COROUTINE_ENTRY_EXIT = None
+
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
 
@@ -104,10 +117,7 @@ class RedisHandler(object):
     
     def submit(self, func, *args):
         """Submit a Redis update to run."""
-        updater = asyncio.run_coroutine_threadsafe(
-                      self.event_loop.run_in_executor(self.executor, func, *args),
-                      self.event_loop
-                  )
+        updater = self.event_loop.run_in_executor(self.executor, func, *args)
         return updater
     
     def client_to_redis(self, client_address):
@@ -141,7 +151,12 @@ class RedisHandler(object):
         return
 
     def answer_to_redis(self, client_address, answer):
-        """Address and CNAME records to Redis."""
+        """Address and CNAME records to Redis.
+        
+        Scheduled with RedisHandler.submit().
+        """
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("START answer_to_redis")
         self.client_to_redis(client_address)
         for rrset in answer:
             name = rrset.name.to_text()
@@ -153,16 +168,24 @@ class RedisHandler(object):
             if rrset.rdtype == rdatatype.CNAME:
                 self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
                 continue
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("END answer_to_redis")
         return
         
     def nx_to_redis(self, client_address, name):
-        """NXDOMAIN records to Redis."""
+        """NXDOMAIN records to Redis.
+        
+        Scheduled with RedisHandler.submit().
+        """
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("START nx_to_redis")
         self.client_to_redis(client_address)
         k = '{};{};nx'.format(client_address, name)
         self.redis.incr(k)
         self.redis.expire(k, TTL_GRACE)
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("END nx_to_redis")
         return
-    
 
 class DnsTap(Consumer):
     
