@@ -339,7 +339,13 @@ class DataProcessor(object):
         raise BadControlTypeError('Control type: {}'.format(control_type))
 
 class Server(object):
-    """A Frame Stream server."""
+    """A Frame Stream server.
+    
+    Supports regular, synchronous socket connections as well as asyncio.
+    
+        Synchronous:  Use UnixSocket + Server.listen()
+        Asyncrhonous: Use AsyncUnixSocket + Server.listen_asyncio()
+    """
     
     def __init__(self,stream,consumer,loop=None,data_type=None,recv_size=1024):
         """Initialize the server.

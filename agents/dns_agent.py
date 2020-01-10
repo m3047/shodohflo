@@ -49,7 +49,6 @@ set to a print function which accepts a string, for example:
 
     PRINT_THIS = logging.debug
     PRINT_THAT = print
-
 """
 
 import sys
@@ -57,7 +56,6 @@ from os import path
 import logging
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import redis
 
 import dns.rdatatype as rdatatype
@@ -67,6 +65,7 @@ sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
 from shodohflo.fstrm import Consumer, Server, AsyncUnixSocket
 import shodohflo.protobuf.dnstap as dnstap
+from shodohflo.redis_handler import RedisBaseHandler
 
 if __name__ == "__main__":
     from configuration import *
@@ -94,38 +93,17 @@ PRINT_COROUTINE_ENTRY_EXIT = None
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
 
-class RedisHandler(object):
+class RedisHandler(RedisBaseHandler):
     """Handles calls to Redis so that they can be run in a different thread."""
 
     ADDRESS_RECORDS = { rdatatype.A, rdatatype.AAAA }
     
-    def __init__(self, redis_server, event_loop):
+    def redis_server(self):
         if USE_DNSPYTHON:
-            redis_server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
+            server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
         else:
-            redis_server = REDIS_SERVER
-        self.redis = redis.client.Redis(redis_server, decode_responses=True)
-        # NOTE: Tried to do this with a BlockingConnectionPool but it refused to connect
-        #       to anything but localhost. I don't think it matters, the ThreadPoolExecutor
-        #       should limit the number of connections to the number of threads, which is 1.
-                        #connection_pool=redis.connection.BlockingConnectionPool(
-                            #max_connections=2,timeout=5)
-                                       #)
-        self.executor = ThreadPoolExecutor(max_workers=1)
-        self.event_loop = event_loop
-        return
-    
-    def submit(self, func, *args):
-        """Submit a Redis update to run."""
-        updater = self.event_loop.run_in_executor(self.executor, func, *args)
-        return updater
-    
-    def client_to_redis(self, client_address):
-        """Called internally by the other *_to_redis() methods to update the client."""
-        k = 'client;{}'.format(client_address)
-        self.redis.incr(k)
-        self.redis.expire(k, TTL_GRACE)
-        return
+            server = REDIS_SERVER
+        return server
     
     def a_to_redis(self, client_address, name, ttl, address ):
         """Called internally by rrset_to_redis()."""
@@ -199,7 +177,7 @@ class DnsTap(Consumer):
                           setting this to None, but then you'll get potentially
                           strange client addresses logged to Redis.
         """
-        self.redis = RedisHandler(REDIS_SERVER, event_loop)
+        self.redis = RedisHandler(event_loop, TTL_GRACE)
         self.message_type = message_type
         return
 
@@ -246,7 +224,7 @@ class DnsTap(Consumer):
 def main():
     logging.info('DNS Agent starting. Socket: {}  Redis: {}'.format(SOCKET_ADDRESS, REDIS_SERVER))
     event_loop = asyncio.get_event_loop()
-    Server(AsyncUnixSocket(SOCKET_ADDRESS), DnsTap(event_loop), event_loop).listen_asyncio()
+    Server(AsyncUnixSocket(SOCKET_ADDRESS), DnsTap(event_loop), event_loop, recv_size=4096).listen_asyncio()
 
 if __name__ == '__main__':
     main()
