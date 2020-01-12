@@ -24,7 +24,7 @@ sandbox.
 What ShoDoHFlo adds to your picture is:
 
 * What IP addresses resolved to in the DNS.
-* IP addresses which failed to resolve in the DNS.
+* Names which failed to resolve in the DNS.
 * IP addresses for which no resolution in the DNS was attempted.
 * What DNS resolutions were, regardless of whether the client attempted contact or not.
 
