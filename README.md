@@ -73,6 +73,12 @@ has no dependencies beyond those for core components.
 
 There are other examples as well, look in the `examples/` directory.
 
+## Asyncio... Or Not
+
+As of 10-Jan-2020 both `dns_agent` and `pcap_agent` use `asyncio`. `shodohflo.fstrm` still supports
+synchronous, plain old sockets as well as shiny `asyncio`. In case you want the old, synchronous / blocking IO
+agents, you can checkout the branch `synchronous`.
+
 ## Collaborators welcomed!
 
 Send me an email, or file an issue or PR.
