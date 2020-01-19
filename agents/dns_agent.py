@@ -66,6 +66,7 @@ sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 from shodohflo.fstrm import Consumer, Server, AsyncUnixSocket
 import shodohflo.protobuf.dnstap as dnstap
 from shodohflo.redis_handler import RedisBaseHandler
+from shodohflo.utils import StatisticsFactory
 
 if __name__ == "__main__":
     from configuration import *
@@ -75,6 +76,7 @@ else:
     USE_DNSPYTHON = False
     LOG_LEVEL = None
     TTL_GRACE = None
+    DNS_STATS = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -87,8 +89,11 @@ if TTL_GRACE is None:
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
-# Start/end of coroutines.
+# Start/end of coroutines. You will probably also want to enable it in shodohflo.fstrm.
 PRINT_COROUTINE_ENTRY_EXIT = None
+
+# Similar to the foregoing, but always set to something valid.
+STATISTICS_PRINTER = logging.info
 
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
@@ -97,6 +102,13 @@ class RedisHandler(RedisBaseHandler):
     """Handles calls to Redis so that they can be run in a different thread."""
 
     ADDRESS_RECORDS = { rdatatype.A, rdatatype.AAAA }
+    
+    def __init__(self, event_loop, ttl_grace, statistics):
+        RedisBaseHandler.__init__(self, event_loop, ttl_grace)
+        if DNS_STATS:
+            self.answer_to_redis_stats = statistics.Collector("answer_to_redis")
+            self.nx_to_redis_stats = statistics.Collector("nx_to_redis")
+        return
     
     def redis_server(self):
         if USE_DNSPYTHON:
@@ -135,6 +147,9 @@ class RedisHandler(RedisBaseHandler):
         """
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START answer_to_redis")
+        if DNS_STATS:
+            timer = self.answer_to_redis_stats.start_timer()
+            
         self.client_to_redis(client_address)
         for rrset in answer:
             name = rrset.name.to_text()
@@ -146,6 +161,9 @@ class RedisHandler(RedisBaseHandler):
             if rrset.rdtype == rdatatype.CNAME:
                 self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
                 continue
+        
+        if DNS_STATS:
+            timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END answer_to_redis")
         return
@@ -157,17 +175,23 @@ class RedisHandler(RedisBaseHandler):
         """
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START nx_to_redis")
+        if DNS_STATS:
+            timer = self.answer_to_redis_stats.start_timer()
+
         self.client_to_redis(client_address)
         k = '{};{};nx'.format(client_address, name)
         self.redis.incr(k)
         self.redis.expire(k, TTL_GRACE)
+
+        if DNS_STATS:
+            timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END nx_to_redis")
         return
 
 class DnsTap(Consumer):
     
-    def __init__(self, event_loop, message_type=dnstap.Message.TYPE_CLIENT_RESPONSE):
+    def __init__(self, event_loop, statistics, message_type=dnstap.Message.TYPE_CLIENT_RESPONSE):
         """Dnstap consumer.
 
         Parameters:
@@ -177,8 +201,10 @@ class DnsTap(Consumer):
                           setting this to None, but then you'll get potentially
                           strange client addresses logged to Redis.
         """
-        self.redis = RedisHandler(event_loop, TTL_GRACE)
+        self.redis = RedisHandler(event_loop, TTL_GRACE, statistics)
         self.message_type = message_type
+        if DNS_STATS:
+            self.consume_stats = statistics.Collector("consume")
         return
 
     def accepted(self, data_type):
@@ -197,11 +223,18 @@ class DnsTap(Consumer):
         
         By default the type is restricted to dnstap.Message.TYPE_CLIENT_RESPONSE.
         """
+        # NOTE: This function is called in coroutine context, but is not the coroutine itself.
+        # Enable PRINT_COROUTINE_ENTRY_EXIT in shodohflo.fstrm if needed.
+        if DNS_STATS:
+            timer = self.consume_stats.start_timer()
+
         message = dnstap.Dnstap(frame).field('message')[1]
         if self.message_type and message.field('type')[1] != self.message_type:
             if self.performance_hint:
                 logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
                 self.performance_hint = False
+            if DNS_STATS:
+                timer.stop()
             return True
         # NOTE: Do these lookups AFTER verifying that we have the correct message type!
         response = message.field('response_message')[1]
@@ -211,20 +244,40 @@ class DnsTap(Consumer):
 
         if response.rcode() == rcode.NXDOMAIN:
             redis.submit(redis.nx_to_redis, client_address, response.question[0].name.to_text().lower())
-            return True
-        if response.rcode() != rcode.NOERROR:
-            return True
-        redis.submit(redis.answer_to_redis, client_address, response.answer)
+        elif response.rcode() == rcode.NOERROR:
+            redis.submit(redis.answer_to_redis, client_address, response.answer)
+
+        if DNS_STATS:
+            timer.stop()
         return True
     
     def finished(self, partial_frame):
         logging.warn('Finished. Partial data: "{}"'.format(hexify(partial_frame)))
         return
 
+async def statistics_report(statistics):
+    while True:
+        await asyncio.sleep(DNS_STATS)
+        for stat in sorted(statistics.stats(), key=lambda x:x['name']):
+            STATISTICS_PRINTER(
+                '{}: emin={:.4f} emax={:.4f} e1={:.4f} e10={:.4f} e60={:.4f} dmin={} dmax={} d1={:.4f} d10={:.4f} d60={:.4f} nmin={} nmax={} n1={:.4f} n10={:.4f} n60={:.4f}'.format(
+                    stat['name'],
+                    stat['elapsed']['minimum'], stat['elapsed']['maximum'], stat['elapsed']['one'], stat['elapsed']['ten'], stat['elapsed']['sixty'],
+                    stat['depth']['minimum'], stat['depth']['maximum'], stat['depth']['one'], stat['depth']['ten'], stat['depth']['sixty'],
+                    stat['n_per_sec']['minimum'], stat['n_per_sec']['maximum'], stat['n_per_sec']['one'], stat['n_per_sec']['ten'], stat['n_per_sec']['sixty'])
+                )
+    return
+
 def main():
     logging.info('DNS Agent starting. Socket: {}  Redis: {}'.format(SOCKET_ADDRESS, REDIS_SERVER))
     event_loop = asyncio.get_event_loop()
-    Server(AsyncUnixSocket(SOCKET_ADDRESS), DnsTap(event_loop), event_loop, recv_size=4096).listen_asyncio()
+    statistics = StatisticsFactory()
+    if DNS_STATS:
+        asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
+    Server(AsyncUnixSocket(SOCKET_ADDRESS),
+           DnsTap(event_loop, statistics),
+           event_loop, recv_size=4096
+          ).listen_asyncio()
 
 if __name__ == '__main__':
     main()

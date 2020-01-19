@@ -3,7 +3,7 @@ SOCKET_ADDRESS = '/tmp/dnstap'
 
 REDIS_SERVER = 'localhost'
 # WARNING! Redis translation of hostnames to addresses using DNS is unreliable
-# because it calls socket.getaddrinfo() which in turn exhibits incorrect case
+# because it calls socket.getaddrinfo() which in turn may exhibit incorrect case
 # sensitivity. DNS is not supposed to be case sensitive.
 #
 # If you want to use hostnames and DNS, then you may want to set USE_DNSPTYHON
@@ -21,3 +21,9 @@ LOG_LEVEL = None
 # captures it is the expire time.
 TTL_GRACE = 900         # 15 minutes
 
+# Number of seconds between performance logging events. Can be set individually
+# for the PCAP and DNS agents. If set to None or 0 then no logging occurs. Events
+# are logged at INFO level.
+# PCAP_STATS = 600 # 10 minutes
+PCAP_STATS = None
+DNS_STATS = None

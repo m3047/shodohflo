@@ -53,7 +53,6 @@ set to a print function which accepts a string, for example:
 
 import sys
 from os import path
-import time
 import struct
 import logging
 
@@ -68,6 +67,7 @@ import redis
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
 from shodohflo.redis_handler import RedisBaseHandler
+from shodohflo.utils import Once, Recent, StatisticsFactory
 
 if __name__ == "__main__":
     from configuration import *
@@ -76,6 +76,7 @@ else:
     USE_DNSPYTHON = False
     LOG_LEVEL = None
     TTL_GRACE = None
+    PCAP_STATS = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -101,6 +102,9 @@ TCP_OR_UDP = set((socket.IPPROTO_TCP, socket.IPPROTO_UDP))
 PRINT_COROUTINE_ENTRY_EXIT = None
 # Packet flows being written to Redis.
 PRINT_PACKET_FLOW = None
+
+# Similar to the foregoing, but always set to something valid.
+STATISTICS_PRINTER = logging.info
 
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
@@ -137,57 +141,14 @@ def to_address(s):
         return ipaddress.IPv4Address(s)
     else:
         return ipaddress.IPv6Address(s)
-
-class Recent(object):
-    """Tracks recently seen things."""
-    def __init__(self, cycle=30, buckets=3, frequency=10):
-        self.buckets = [ set() for i in range(buckets) ]
-        self.working_set = set()
-        self.current = self.buckets[0]
-        self.last_time = time.time()
-        self.cycle = cycle
-        self.frequency = frequency
-        self.count = 0
-        return
-    
-    def check_frequency(self):
-        """Algorithm to age stuff out of the recent cache."""
-        self.count += 1
-        if self.count < self.frequency:
-            return
-        self.count = 0
-        now = time.time()
-        if (now - self.last_time) < self.cycle:
-            return
-        self.last_time = now
-        discard = self.buckets.pop()
-        working_set = set()
-        for bucket in self.buckets:
-            working_set |= bucket
-        self.working_set = working_set
-        self.current = set()
-        self.buckets.insert(0, self.current)
-        return
-    
-    def seen(self, thing):
-        self.check_frequency()
-        if thing in self.working_set:
-            return True
-        self.working_set.add(thing)
-        self.current.add(thing)
-        return False
-
-class Once(object):
-    """Tests True the first time it's tested, False after."""
-    def __init__(self):
-        self.count = 1
-        return
-    
-    def __call__(self):
-        self.count -= 1
-        return self.count >= 0
     
 class RedisHandler(RedisBaseHandler):
+    
+    def __init__(self, event_loop, ttl, statistics):
+        RedisBaseHandler.__init__(self, event_loop, ttl)
+        if PCAP_STATS:
+            self.flow_to_redis_stats = statistics.Collector("flow_to_redis")
+        return
 
     def redis_server(self):
         if USE_DNSPYTHON:
@@ -203,31 +164,42 @@ class RedisHandler(RedisBaseHandler):
         """
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START flow_to_redis")
+        if PCAP_STATS:
+            timer = self.flow_to_redis_stats.start_timer()
 
         self.client_to_redis(client_address)
 
         self.redis.incr(k)
         self.redis.expire(k, TTL_GRACE)
 
+        if PCAP_STATS:
+            timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END flow_to_redis")
         return
-
-
+    
 class Server(object):
-    def __init__(self, interface, our_network, event_loop):
+    def __init__(self, interface, our_network, event_loop, statistics):
         sock, Packet, our_network = get_socket(interface, our_network)
         self.sock = sock
         self.Packet = Packet
         self.our_network = our_network
         self.recently = Recent()
-        self.redis = RedisHandler(event_loop, TTL_GRACE)
+        self.redis = RedisHandler(event_loop, TTL_GRACE, statistics)
+        if PCAP_STATS:
+            self.process_data_stats = statistics.Collector("process_data")
+            self.socket_recv_stats = statistics.Collector("socket_recv")
+            self.socket_recv_timer = self.socket_recv_stats.start_timer()
         return
     
     def process_data(self):
         """Called by the event loop when there is a packet to process."""
+        if PCAP_STATS:
+            self.socket_recv_timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START process_data")
+        if PCAP_STATS:
+            timer = self.process_data_stats.start_timer()
 
         msg = self.sock.recv(60)
         pkt = self.Packet(msg)
@@ -265,15 +237,32 @@ class Server(object):
 
             self.redis.submit(self.redis.flow_to_redis, client, k)
 
+        if PCAP_STATS:
+            timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END process_data")
 
+        if PCAP_STATS:
+            self.socket_recv_timer = self.socket_recv_stats.start_timer()
         return
 
     def close(self):
         self.sock.close()
         return
-            
+
+async def statistics_report(statistics):
+    while True:
+        await asyncio.sleep(PCAP_STATS)
+        for stat in sorted(statistics.stats(), key=lambda x:x['name']):
+            STATISTICS_PRINTER(
+                '{}: emin={:.4f} emax={:.4f} e1={:.4f} e10={:.4f} e60={:.4f} dmin={} dmax={} d1={:.4f} d10={:.4f} d60={:.4f} nmin={} nmax={} n1={:.4f} n10={:.4f} n60={:.4f}'.format(
+                    stat['name'],
+                    stat['elapsed']['minimum'], stat['elapsed']['maximum'], stat['elapsed']['one'], stat['elapsed']['ten'], stat['elapsed']['sixty'],
+                    stat['depth']['minimum'], stat['depth']['maximum'], stat['depth']['one'], stat['depth']['ten'], stat['depth']['sixty'],
+                    stat['n_per_sec']['minimum'], stat['n_per_sec']['maximum'], stat['n_per_sec']['one'], stat['n_per_sec']['ten'], stat['n_per_sec']['sixty'])
+                )
+    return
+    
 async def close_tasks(tasks):
     all_tasks = asyncio.gather(*tasks)
     all_tasks.cancel()
@@ -288,8 +277,12 @@ def main():
     interface, our_network = sys.argv[1:3]
     logging.info('Packet Capture Agent starting. Interface: {}  Our Network: {}  Redis: {}'.format(interface, our_network, REDIS_SERVER))
     event_loop = asyncio.get_event_loop()
-    server = Server(interface, our_network, event_loop)
+    statistics = StatisticsFactory()
+    server = Server(interface, our_network, event_loop, statistics)
     event_loop.add_reader(server.sock, server.process_data)
+    if PCAP_STATS:
+        asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
+        
     try:
         event_loop.run_forever()
     except KeyboardInterrupt:
