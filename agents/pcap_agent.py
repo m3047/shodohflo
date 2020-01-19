@@ -55,6 +55,7 @@ import sys
 from os import path
 import struct
 import logging
+import traceback
 
 import socket
 import asyncio
@@ -63,6 +64,7 @@ from concurrent.futures import CancelledError
 import ipaddress
 import dpkt
 import redis
+from redis.exceptions import ConnectionError
 
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
@@ -148,6 +150,7 @@ class RedisHandler(RedisBaseHandler):
         RedisBaseHandler.__init__(self, event_loop, ttl)
         if PCAP_STATS:
             self.flow_to_redis_stats = statistics.Collector("flow_to_redis")
+            self.backlog = statistics.Collector("redis_backlog")
         return
 
     def redis_server(self):
@@ -157,27 +160,49 @@ class RedisHandler(RedisBaseHandler):
             server = REDIS_SERVER
         return server
     
-    def flow_to_redis(self, client_address, k):
+    def flow_to_redis(self, backlog_timer, client_address, k):
         """Log a netflow to Redis.
         
         Scheduled with RedisHandler.submit().
         """
+        if self.stop:
+            return
+        
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START flow_to_redis")
         if PCAP_STATS:
             timer = self.flow_to_redis_stats.start_timer()
 
-        self.client_to_redis(client_address)
+        try:
+            self.client_to_redis(client_address)
 
-        self.redis.incr(k)
-        self.redis.expire(k, TTL_GRACE)
+            self.redis.incr(k)
+            self.redis.expire(k, TTL_GRACE)
+        except ConnectionError as e:
+            if not self.stop:
+                print('redis.exceptions.ConnectionError: {}'.format(e))
+                self.stop = True
+        except Exception as e:
+            if not self.stop:
+                traceback.print_exc()
+                self.stop = True
 
         if PCAP_STATS:
             timer.stop()
+            backlog_timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END flow_to_redis")
         return
-    
+
+    def submit(self, func, *args):
+        if PCAP_STATS:
+            backlog_timer = self.backlog.start_timer()
+        else:
+            backlog_timer = None
+        args = tuple((backlog_timer,)) + args
+        RedisBaseHandler.submit(self, func, *args)
+        return
+
 class Server(object):
     def __init__(self, interface, our_network, event_loop, statistics):
         sock, Packet, our_network = get_socket(interface, our_network)
@@ -268,7 +293,7 @@ async def close_tasks(tasks):
     all_tasks.cancel()
     try:
         await all_tasks
-    except CancelledError:
+    except (CancelledError, ConnectionError):
         pass
     return
     

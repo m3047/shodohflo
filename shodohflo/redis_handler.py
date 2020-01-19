@@ -25,13 +25,17 @@ import redis
 
 class RedisBaseHandler(object):
     """Handles calls to Redis so that they can be run in a different thread."""
+    
+    CONNECT_TIMEOUT = 5
 
     def redis_server(self):
         """Needs to be subclassed to return the address of the Redis server."""
         pass
     
     def __init__(self, event_loop, ttl_grace):
-        self.redis = redis.client.Redis(self.redis_server(), decode_responses=True)
+        self.redis = redis.client.Redis(self.redis_server(), decode_responses=True,
+                                        socket_connect_timeout=self.CONNECT_TIMEOUT
+                                       )
         # NOTE: Tried to do this with a BlockingConnectionPool but it refused to connect
         #       to anything but localhost. I don't think it matters, the ThreadPoolExecutor
         #       should limit the number of connections to the number of threads, which is 1.
@@ -41,12 +45,19 @@ class RedisBaseHandler(object):
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.event_loop = event_loop
         self.ttl_grace = ttl_grace
+        # NOTE: This could be protected by a lock, but setting it True is final so it
+        #       it doesn't really matter. Worst thing that happens is that multiple
+        #       errors get logged. (Look at subclasses to see how this is used.)
+        self.stop = False
         return
     
     def submit(self, func, *args):
         """Submit a Redis update to run."""
-        updater = self.event_loop.run_in_executor(self.executor, func, *args)
-        return updater
+        if self.stop:
+            self.event_loop.stop()
+            return
+        self.event_loop.run_in_executor(self.executor, func, *args)
+        return
     
     def client_to_redis(self, client_address):
         """Called internally by the other *_to_redis() methods to update the client."""

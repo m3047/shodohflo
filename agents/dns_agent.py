@@ -54,9 +54,11 @@ set to a print function which accepts a string, for example:
 import sys
 from os import path
 import logging
+import traceback
 
 import asyncio
 import redis
+from redis.exceptions import ConnectionError
 
 import dns.rdatatype as rdatatype
 import dns.rcode as rcode
@@ -108,6 +110,7 @@ class RedisHandler(RedisBaseHandler):
         if DNS_STATS:
             self.answer_to_redis_stats = statistics.Collector("answer_to_redis")
             self.nx_to_redis_stats = statistics.Collector("nx_to_redis")
+            self.backlog = statistics.Collector("redis_backlog")
         return
     
     def redis_server(self):
@@ -140,55 +143,90 @@ class RedisHandler(RedisBaseHandler):
         self.redis.expire(k, TTL_GRACE)
         return
 
-    def answer_to_redis(self, client_address, answer):
+    def answer_to_redis(self, backlog_timer, client_address, answer):
         """Address and CNAME records to Redis.
         
         Scheduled with RedisHandler.submit().
         """
+        if self.stop:
+            return
+        
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START answer_to_redis")
         if DNS_STATS:
             timer = self.answer_to_redis_stats.start_timer()
-            
-        self.client_to_redis(client_address)
-        for rrset in answer:
-            name = rrset.name.to_text()
-            if rrset.rdtype in self.ADDRESS_RECORDS:
-                ttl = rrset.ttl
-                for rr in rrset:
-                    self.a_to_redis(client_address, name.lower(), ttl, rr.to_text().lower())
-                continue
-            if rrset.rdtype == rdatatype.CNAME:
-                self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
-                continue
+
+        try:
+            self.client_to_redis(client_address)
+            for rrset in answer:
+                name = rrset.name.to_text()
+                if rrset.rdtype in self.ADDRESS_RECORDS:
+                    ttl = rrset.ttl
+                    for rr in rrset:
+                        self.a_to_redis(client_address, name.lower(), ttl, rr.to_text().lower())
+                    continue
+                if rrset.rdtype == rdatatype.CNAME:
+                    self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
+                    continue
+        except ConnectionError as e:
+            if not self.stop:
+                print('redis.exceptions.ConnectionError: {}'.format(e))
+                self.stop = True
+        except Exception as e:
+            if not self.stop:
+                traceback.print_exc()
+                self.stop = True
         
         if DNS_STATS:
             timer.stop()
+            backlog_timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END answer_to_redis")
         return
         
-    def nx_to_redis(self, client_address, name):
+    def nx_to_redis(self, backlog_timer, client_address, name):
         """NXDOMAIN records to Redis.
         
         Scheduled with RedisHandler.submit().
         """
+        if self.stop:
+            return
+
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START nx_to_redis")
         if DNS_STATS:
             timer = self.answer_to_redis_stats.start_timer()
 
-        self.client_to_redis(client_address)
-        k = '{};{};nx'.format(client_address, name)
-        self.redis.incr(k)
-        self.redis.expire(k, TTL_GRACE)
+        try:
+            self.client_to_redis(client_address)
+            k = '{};{};nx'.format(client_address, name)
+            self.redis.incr(k)
+            self.redis.expire(k, TTL_GRACE)
+        except ConnectionError as e:
+            if not self.stop:
+                print('redis.exceptions.ConnectionError: {}'.format(e))
+                self.stop = True
+        except Exception as e:
+            if not self.stop:
+                traceback.print_exc()
+                self.stop = True
 
         if DNS_STATS:
             timer.stop()
+            backlog_timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END nx_to_redis")
         return
-
+    
+    def submit(self, func, *args):
+        if DNS_STATS:
+            backlog_timer = self.backlog.start_timer()
+        else:
+            backlog_timer = None
+        args = tuple((backlog_timer,)) + args
+        RedisBaseHandler.submit(self, func, *args)
+        return
+    
 class DnsTap(Consumer):
     
     def __init__(self, event_loop, statistics, message_type=dnstap.Message.TYPE_CLIENT_RESPONSE):
