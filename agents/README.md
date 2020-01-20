@@ -1,4 +1,4 @@
-The agents in this directory capture information and forward it to a _Redis_ instance.
+.The agents in this directory capture information and forward it to a _Redis_ instance.
 
 Before attempting to run either of them `cp configuration_sample.py configuration.py` and make
 whatever edits are appropriate.
@@ -90,3 +90,42 @@ Or for example:
 ```
 ./pcap_agent.py eth0 10.0.0.0/8
 ```
+
+### Statistics
+
+Both agents are instrumented and capable of periodically logging various statistics. How often statistics
+are logged depends on the settings of `DNS_STATS` and `PCAP_STATS` respectively (how many seconds between reports).
+
+Conceptually both agents follow much the same pipeline:
+
+1. Receive data.
+1. Initial filtering and processing.
+1. Update Redis as necessary.
+
+Complicating things somewhat, Redis, being blocking, is run in a thread pool. Statistics are gathered for
+the following:
+
+| category | DNS | PCAP |
+| -------- | --- | ---- |
+| backpressure in the listening connection | | `socket_recv` |
+| initial filtering and processing | `consume` | `process_data` |
+| updating Redis | `nx_to_redis`, `answer_to_redis` | `flow_to_redis` |
+| pending queue for Redis | `redis_backlog` | `redis_backlog` |
+
+The following statistics are gathered (which may or may not have meaning depending on context):
+
+* *e*: average elapsed time per coprocess
+* *n*: number of coprocesses per second
+* *d*: active coprocesses of this type (queue depth)
+
+The following time frames are given:
+
+* *min*: minimum per second
+* *max*: maximum per second
+* *1*: most recent second
+* *10*: average, most recent 10 seconds
+* *60*: average, most recent 60 seconds
+
+In general, as long as `d` stays reasonable (single digits) things are probably ok. `socket_recv` is
+inverted, in that a value of `0` (or very close to `0`) means that there is data waiting to be read
+immediately, or in other words data is being buffered in the network stack.
