@@ -117,7 +117,9 @@ class RingBuffer(object):
     
     def stats(self):
         """Return a statistics summary."""
-        j = self.index
+        j = self.index - 1
+        if j < 0:
+            j = len(self.buffer) - 1
         v = self.buffer[j]
         minimum = v
         maximum = v
