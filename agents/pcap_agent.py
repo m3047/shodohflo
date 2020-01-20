@@ -180,7 +180,7 @@ class RedisHandler(RedisBaseHandler):
             self.redis.expire(k, TTL_GRACE)
         except ConnectionError as e:
             if not self.stop:
-                print('redis.exceptions.ConnectionError: {}'.format(e))
+                logging.error('redis.exceptions.ConnectionError: {}'.format(e))
                 self.stop = True
         except Exception as e:
             if not self.stop:
