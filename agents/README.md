@@ -1,4 +1,4 @@
-.The agents in this directory capture information and forward it to a _Redis_ instance.
+The agents in this directory capture information and forward it to a _Redis_ instance.
 
 Before attempting to run either of them `cp configuration_sample.py configuration.py` and make
 whatever edits are appropriate.
