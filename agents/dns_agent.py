@@ -314,7 +314,7 @@ def main():
         asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
     Server(AsyncUnixSocket(SOCKET_ADDRESS),
            DnsTap(event_loop, statistics),
-           event_loop, recv_size=4096
+           event_loop
           ).listen_asyncio()
 
 if __name__ == '__main__':
