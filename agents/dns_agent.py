@@ -170,7 +170,7 @@ class RedisHandler(RedisBaseHandler):
                     continue
         except ConnectionError as e:
             if not self.stop:
-                print('redis.exceptions.ConnectionError: {}'.format(e))
+                logging.fatal('redis.exceptions.ConnectionError: {}'.format(e))
                 self.stop = True
         except Exception as e:
             if not self.stop:

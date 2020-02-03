@@ -233,7 +233,6 @@ class DataProcessor(object):
             
             self.data_length = int.from_bytes(buffered[:4], **UNSIGNED_BIG_ENDIAN)
             buffered = buffered[4:]
-            print('data_length: {}'.format(self.data_length))
             
         # Length is zero, this is a control frame.
         if self.data_length == 0:
@@ -246,7 +245,6 @@ class DataProcessor(object):
 
                 self.control_length = int.from_bytes(buffered[:4], **UNSIGNED_BIG_ENDIAN)
                 buffered = buffered[4:]
-                print('control_length: {}'.format(self.control_length))
 
             # Have we got at least that much in the buffer?
             if len(buffered) < self.control_length:
@@ -255,7 +253,6 @@ class DataProcessor(object):
             
             self.is_control_frame = True
             self.frame = buffered[:self.control_length]
-            print('Full control frame ({}).'.format(len(self.frame)))
             self.buffer = buffered[self.control_length:]
             self.data_length = None
             self.control_length = None
@@ -405,7 +402,6 @@ class Server(object):
                 active = True
                 while active:
                     while not processor.frame_ready():
-                        print('{} ({})'.format(processor.read_size(), len(processor.buffer)))
                         data = conn.recv(processor.read_size())        # type(data) == bytes
                         if not data:
                             processor.connection_done(self.consumer)
@@ -433,7 +429,6 @@ class Server(object):
         while active:
             try:
                 while not processor.frame_ready():
-                    print('{} ({})'.format(processor.read_size(), len(processor.buffer)))
                     data = await reader.read(processor.read_size())
                     if not data:
                         processor.connection_done(self.consumer)
