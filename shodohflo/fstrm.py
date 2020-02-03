@@ -184,9 +184,11 @@ class DataProcessor(object):
     """
     def __init__(self, data_type):
         self.buffer = bytes()
-        self.receiving_data = False
+        self.receiving_data = True
         self.running = True
         self.data_type = data_type
+        self.data_length = None
+        self.control_length = None
         return
     
     def append(self, data):
@@ -196,10 +198,24 @@ class DataProcessor(object):
     def connection_done(self, consumer):
         """Called to perform internal cleanup when a connection closes."""
         if self.receiving_data:
-            self.consumer.finished(self.buffer)
+            consumer.finished(self.buffer)
         self.receiving_data = False
         self.buffer = bytes()
         return
+    
+    def read_size(self):
+        """Returns how many bytes we need to read.
+        
+        This is predicated on reading enough of the packet that we know how much
+        more we need to read to get the whole thing.
+        """
+        if self.data_length is None:
+            return 8 - len(self.buffer)
+        if self.data_length:
+            return self.data_length - len(self.buffer)        # control length is really part of the data.
+        if self.control_length is None:
+            return 4 - len(self.buffer)
+        return self.control_length - len(self.buffer)
     
     def frame_ready(self):
         """Is a complete frame ready in the buffer?"""
@@ -208,40 +224,53 @@ class DataProcessor(object):
             return True
 
         buffered = self.buffer
+        
+        if self.data_length is None:
 
-        # At least four bytes for the payload length?
-        if len(buffered) < 4:
-            return False
-        
-        payload_length = int.from_bytes(buffered[:4], **UNSIGNED_BIG_ENDIAN)
-        buffered = buffered[4:]
-        
-        # Length is zero, this is a control frame.
-        if payload_length == 0:
-            
-            # Has to have at least 8 bytes for the length and type.
-            if len(buffered) < 8:
+            # At least four bytes for the payload length?
+            if len(buffered) < 4:
                 return False
-
-            payload_length = int.from_bytes(buffered[:4], **UNSIGNED_BIG_ENDIAN)
+            
+            self.data_length = int.from_bytes(buffered[:4], **UNSIGNED_BIG_ENDIAN)
             buffered = buffered[4:]
+            print('data_length: {}'.format(self.data_length))
+            
+        # Length is zero, this is a control frame.
+        if self.data_length == 0:
+
+            if self.control_length is None:
+                # Has to have at least 4 bytes for the length.
+                if len(buffered) < 4:
+                    self.buffer = buffered
+                    return False
+
+                self.control_length = int.from_bytes(buffered[:4], **UNSIGNED_BIG_ENDIAN)
+                buffered = buffered[4:]
+                print('control_length: {}'.format(self.control_length))
 
             # Have we got at least that much in the buffer?
-            if len(buffered) < payload_length:
+            if len(buffered) < self.control_length:
+                self.buffer = buffered
                 return False
             
             self.is_control_frame = True
-            self.frame = buffered[:payload_length]
-            self.buffer = buffered[payload_length:]
+            self.frame = buffered[:self.control_length]
+            print('Full control frame ({}).'.format(len(self.frame)))
+            self.buffer = buffered[self.control_length:]
+            self.data_length = None
+            self.control_length = None
             return True
         
         # Otherwise it is data.
-        if len(buffered) < payload_length:
+        if len(buffered) < self.data_length:
+            self.buffer = buffered
             return False
         
         self.is_control_frame = False
-        self.frame = buffered[:payload_length]
-        self.buffer = buffered[payload_length:]
+        self.frame = buffered[:self.data_length]
+        self.buffer = buffered[self.data_length:]
+        self.data_length = None
+        self.control_length = None
         return True
     
     def content_type_payload(self, frame):
@@ -288,7 +317,7 @@ class DataProcessor(object):
         
         if not self.is_control_frame:
             if loop:
-                asyncio.run_coroutine_threadsafe(self.schedule_consumer(consumer, self.frame), loop)
+                loop.create_task(self.schedule_consumer(consumer, self.frame))
                 return FSTRM_DATA_FRAME
             else:
                 return consumer.consume(self.frame) and FSTRM_DATA_FRAME or False
@@ -347,7 +376,7 @@ class Server(object):
         Asyncrhonous: Use AsyncUnixSocket + Server.listen_asyncio()
     """
     
-    def __init__(self,stream,consumer,loop=None,data_type=None,recv_size=1024):
+    def __init__(self,stream,consumer,loop=None,data_type=None, recv_size=None):
         """Initialize the server.
         
         stream: a StreamingSocket
@@ -355,7 +384,7 @@ class Server(object):
         loop: if loop is supplied, then an asyncio server is created.
         data_type: type of payload. If not supplied, then whatever the client
                 advertises is sent back as acceptable.
-        recv_size: maximum number of bytes to accept in a single chunk.
+        recv_size: NOT USED.
         """
         if loop:
             self.server = stream.get_socket(self.process_data, loop)
@@ -364,7 +393,6 @@ class Server(object):
         self.loop = loop
         self.consumer = consumer
         self.data_type = data_type
-        self.recv_size = recv_size
         return
         
     def listen(self):
@@ -376,16 +404,18 @@ class Server(object):
                 processor = DataProcessor(self.data_type)
                 active = True
                 while active:
-                    data = conn.recv(self.recv_size)        # type(data) == bytes
-                    if not data:
-                        processor.connection_done(self.consumer)
-                        break
-                    processor.append(data)
-                    while processor.frame_ready():
-                        if not processor.process_frame(conn, self.consumer):
+                    while not processor.frame_ready():
+                        print('{} ({})'.format(processor.read_size(), len(processor.buffer)))
+                        data = conn.recv(processor.read_size())        # type(data) == bytes
+                        if not data:
                             processor.connection_done(self.consumer)
                             active = False
                             break
+                        processor.append(data)
+                    if active and not processor.process_frame(conn, self.consumer):
+                        processor.connection_done(self.consumer)
+                        active = False
+                        break
                 conn.close()
         except KeyboardInterrupt:
             pass
@@ -402,22 +432,26 @@ class Server(object):
         active = True
         while active:
             try:
-                data = await reader.read(self.recv_size)
-                if not data:
-                    processor.connection_done(self.consumer)
-                    break
-                processor.append(data)
-                while processor.frame_ready():
-                    status = processor.process_frame(writer, self.consumer, loop=self.loop)
-                    if not status:
+                while not processor.frame_ready():
+                    print('{} ({})'.format(processor.read_size(), len(processor.buffer)))
+                    data = await reader.read(processor.read_size())
+                    if not data:
                         processor.connection_done(self.consumer)
                         active = False
                         break
-                    elif status == FSTRM_CONTROL_READY:
-                        # To get around restrictions in the python implementation of asyncio
-                        # which require any method calling await to have been declared async.
-                        # Part 2 of 2...
-                        await writer.drain()
+                    processor.append(data)
+                if not active:
+                    break
+                status = processor.process_frame(writer, self.consumer, loop=self.loop)
+                if not status:
+                    processor.connection_done(self.consumer)
+                    active = False
+                    break
+                elif status == FSTRM_CONTROL_READY:
+                    # To get around restrictions in the python implementation of asyncio
+                    # which require any method calling await to have been declared async.
+                    # Part 2 of 2...
+                    await writer.drain()
             except (KeyboardInterrupt, CancelledError):
                 # This is usually a CancelledError caused by the KeyboardInterrupt,
                 # not the actual KeyboardInterrupt.
