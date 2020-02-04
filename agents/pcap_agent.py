@@ -69,7 +69,8 @@ from redis.exceptions import ConnectionError
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
 from shodohflo.redis_handler import RedisBaseHandler
-from shodohflo.utils import Once, Recent, StatisticsFactory
+from shodohflo.utils import Once, Recent
+from shodohflo.statistics import StatisticsFactory
 
 if __name__ == "__main__":
     from configuration import *

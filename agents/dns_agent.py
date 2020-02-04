@@ -68,7 +68,7 @@ sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 from shodohflo.fstrm import Consumer, Server, AsyncUnixSocket
 import shodohflo.protobuf.dnstap as dnstap
 from shodohflo.redis_handler import RedisBaseHandler
-from shodohflo.utils import StatisticsFactory
+from shodohflo.statistics import StatisticsFactory
 
 if __name__ == "__main__":
     from configuration import *
