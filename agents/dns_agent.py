@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2020 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -223,7 +223,7 @@ class RedisHandler(RedisBaseHandler):
             backlog_timer = self.backlog.start_timer()
         else:
             backlog_timer = None
-        args = tuple((backlog_timer,)) + args
+        args = (backlog_timer,) + args
         RedisBaseHandler.submit(self, func, *args)
         return
     

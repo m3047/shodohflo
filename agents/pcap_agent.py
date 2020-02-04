@@ -200,7 +200,7 @@ class RedisHandler(RedisBaseHandler):
             backlog_timer = self.backlog.start_timer()
         else:
             backlog_timer = None
-        args = tuple((backlog_timer,)) + args
+        args = (backlog_timer,) + args
         RedisBaseHandler.submit(self, func, *args)
         return
 
