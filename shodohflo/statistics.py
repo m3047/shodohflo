@@ -65,19 +65,24 @@ class RingBuffer(object):
                 self.index = 0
             self.buffer[self.index] = self.zero
         return
-            
-    def add(self, value):
-        """This is what you call with new data!"""
+    
+    def make_seconds_current(self):
         now_seconds = int(time())
         elapsed_seconds = now_seconds - self.current_second
         if elapsed_seconds:
             self.retire_elapsed_buckets(elapsed_seconds)
-        self.update_bucket(value)
         self.current_second = now_seconds
+        return
+        
+    def add(self, value):
+        """This is what you call with new data!"""
+        self.make_seconds_current()
+        self.update_bucket(value)
         return
     
     def stats(self):
         """Return a statistics summary."""
+        self.make_seconds_current()
         j = self.index - 1
         if j < 0:
             j = len(self.buffer) - 1
@@ -296,9 +301,9 @@ class StatisticsFactory(object):
         self.collector = collector
         return
     
-    def Collector(self, *args):
+    def Collector(self, *args, using=None):
         """Allocates a collector with the supplied name."""
-        collector = self.collector(*args)
+        collector = (using or self.collector)(*args)
         self.collectors.append(collector)
         return collector
 
