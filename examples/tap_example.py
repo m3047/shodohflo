@@ -33,6 +33,15 @@ You can simply run it, or you can use it by:
     >>> server.sock.close()
     >>> tap.protobuf.field('message')[1].field('query_address')
     (Protobuf field: <class 'shodohflo.protobuf.dnstap.IpAddressField'>, IPv4Address('127.0.0.1'))
+    >>> resp = tap.protobuf.field('message')[1].field('response_message')[1]
+    >>> resp
+    <DNS message, ID 5387>
+    >>> type(resp)
+    <class 'dns.message.Message'>
+    >>> resp.question
+    [<DNS www.cnn.com. IN A RRset>]
+    >>> resp.answer
+    [<DNS www.cnn.com. IN CNAME RRset>, <DNS turner-tls.map.fastly.net. IN A RRset>]
 
 """
 
