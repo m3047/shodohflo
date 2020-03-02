@@ -27,3 +27,4 @@ There are other examples in this directory as well. To run the other examples yo
 should first `cp configuration_sample.py configuration.py` and modify appropriately.
 
 * `count_client_keys.py` Returns some statistics about redis keys associated with client addresses.
+* `agents/dns_agent.py` Uses a `ThreadPoolExecutor` (with a pool size of 1) to write data to `Redis`.
