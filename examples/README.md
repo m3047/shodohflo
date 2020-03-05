@@ -1,3 +1,6 @@
+To run the examples you
+should first `cp configuration_sample.py configuration.py` and modify appropriately.
+
 ### tap_example.py
 
 `tap_example.py` captures and displays data written to a unix domain socket in _dnstap_ format.
@@ -23,8 +26,7 @@ options {
 
 ### Other examples
 
-There are other examples in this directory as well. To run the other examples you
-should first `cp configuration_sample.py configuration.py` and modify appropriately.
+There are other examples in this directory as well.
 
 * `count_client_keys.py` Returns some statistics about Redis keys associated with client addresses.
 * `agents/dns_agent.py` Uses a `ThreadPoolExecutor` (with a pool size of 1) to write _Dnstap_ data to Redis.
