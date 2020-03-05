@@ -26,7 +26,7 @@ options {
 
 ### Other examples
 
-There are other examples in this directory as well.
+There are other examples as well.
 
 * `count_client_keys.py` Returns some statistics about Redis keys associated with client addresses.
-* `agents/dns_agent.py` Uses a `ThreadPoolExecutor` (with a pool size of 1) to write _Dnstap_ data to Redis.
+* `../agents/dns_agent.py` Uses a `ThreadPoolExecutor` (with a pool size of 1) to write _Dnstap_ data to Redis.
