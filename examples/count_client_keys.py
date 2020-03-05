@@ -25,7 +25,7 @@ import logging
 import redis
 
 if __name__ == "__main__":
-    from configuration import *
+    from configuration import REDIS_SERVER, USE_DNSPYTHON
 else:
     REDIS_SERVER = 'localhost'
     USE_DNSPYTHON = False

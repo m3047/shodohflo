@@ -44,7 +44,11 @@ sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 from shodohflo.fstrm import Consumer, Server, UnixSocket
 import shodohflo.protobuf.dnstap as dnstap
 
-SOCKET_ADDRESS = '/tmp/dnstap'
+if __name__ == "__main__":
+    from configuration import SOCKET_ADDRESS
+else:
+    SOCKET_ADDRESS = '/tmp/dnstap'
+    
 CONTENT_TYPE = 'protobuf:dnstap.Dnstap'
 
 def hexify(data):
