@@ -23,6 +23,29 @@ options {
 };
 ```
 
+### dnstap2json.py
+
+This program writes line-oriented JSON to either STDOUT or a UDP socket. The JSON is intended to be
+customizable, see the internal documentation (`pydoc3 dnstap2json.JSONMapper` ).
+
+Run it, listening to the domain socket `/tmp/dnstap`, outputting to STDOUT:
+
+```
+./dnstap2json.py /tmp/dnstap
+```
+
+Run it, outputting to 127.0.0.1:3047 (UDP):
+
+```
+./dnstap2json.py /tmp/dnstap 127.0.0.1:3047
+```
+
+Listening for UDP data can be as simple as:
+
+```
+nc -luk 127.0.0.1:3047
+```
+
 ### Other examples
 
 There are other examples as well.
