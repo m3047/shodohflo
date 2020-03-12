@@ -94,6 +94,7 @@ logging.basicConfig(level=logging.INFO)
 CONTENT_TYPE = 'protobuf:dnstap.Dnstap'
 
 # Start/end of coroutines. You will probably also want to enable it in shodohflo.fstrm.
+#PRINT_COROUTINE_ENTRY_EXIT = lambda msg:print(msg,file=sys.stderr,flush=True)
 PRINT_COROUTINE_ENTRY_EXIT = None
 
 # Similar to the foregoing, but always set to something valid.
@@ -311,9 +312,13 @@ class UniversalWriter(object):
         
     async def write(self, msg, backlog_timer):
         """Called to queue something to be output."""
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("START write")
         await self.loop.sock_sendall(self, self.encode_data(msg))
         if backlog_timer:
             backlog_timer.stop()
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("END write")
         return
         
 class DnsTap(Consumer):
