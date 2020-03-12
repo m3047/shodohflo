@@ -202,13 +202,18 @@ class JSONMapper(object):
         
         # Follow the question (CNAMEs) to an answer.
         names = [ question ]
+        seen = set(names)
         chain = [ [question] ]
         while names:
             name = names.pop(0)
             if name in mapping:
                 rr_values = [ rr.to_text().lower() for rr in mapping[name] ]
                 if mapping[name].rdtype == rdatatype.CNAME:
-                    names += rr_values
+                    for rr in rr_values:
+                        if rr in seen:
+                            continue
+                        names.append(rr)
+                        seen.add(rr)
                 chain.append( rr_values )
         
         # Ellipsize if it exceeds MAX_BLOB.
