@@ -358,11 +358,9 @@ class DnsTap(Consumer):
             return True
 
         data = self.mapper.map_fields(message)
-        
         self.loop.create_task(self.writer.write(json.dumps(data) + "\n",
                                                 STATS and self.backlog.start_timer() or None
                              )                 )
-
         if STATS:
             timer.stop()
         return True
