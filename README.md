@@ -68,10 +68,11 @@ This is a browser-based DNS and netflow correlator.
 
 ## Examples
 
-`tap_example.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data and
+* `tap_example.py` is a working example of listening to a Unix domain socket receiving _dnstap_ data and
 has no dependencies beyond those for core components.
+* `dnstap2json.py` is a "ready to eat" customizable example of converting selected Dnstap data to JSON and writing that to STDOUT / a UDP socket asynchronously.
 
-There are other examples as well, look in the `examples/` directory.
+Look in the `examples/` directory.
 
 ## Asyncio... Or Not
 
