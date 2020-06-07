@@ -43,7 +43,7 @@ Run it, outputting to 127.0.0.1:3047 (UDP):
 Listening for UDP data can be as simple as:
 
 ```
-nc -luk 127.0.0.1:3047
+nc -luk 127.0.0.1 3047
 ```
 
 ### Other examples
