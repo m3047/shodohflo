@@ -90,6 +90,7 @@ if TTL_GRACE is None:
 if USE_DNSPYTHON:
     import dns.resolver as resolver
 
+# As set in if_ether.h
 ETH_IP4 = 0x0800
 ETH_IP6 = 0x86DD
 
@@ -122,7 +123,7 @@ def get_socket(interface, network):
     else:
         ip_type = ETH_IP6
         ip_class = dpkt.ip6.IP6
-    sock = socket.socket(socket.AF_PACKET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_PACKET, socket.SOCK_DGRAM|socket.SOCK_NONBLOCK)
     sock.bind((interface, ip_type))
 
     # All of the rest of this is to set the socket into promiscuous mode.
@@ -224,47 +225,57 @@ class Server(object):
             self.socket_recv_timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START process_data")
-        if PCAP_STATS:
-            timer = self.process_data_stats.start_timer()
 
-        msg = self.sock.recv(60)
-        pkt = self.Packet(msg)
-        
-        once = Once()
-        while once():
+        while True:
 
-            if   pkt.p not in TCP_OR_UDP:
+            try:
+                msg = self.sock.recv(60)
+            except BlockingIOError:
+                msg = b''
+            if not msg or len(msg) == 0:
                 break
+                
+            if PCAP_STATS:
+                timer = self.process_data_stats.start_timer()
+
+            pkt = self.Packet(msg)
             
-            src = to_address(pkt.src)
-            dst = to_address(pkt.dst)
+            once = Once()
+            while once():
 
-            if   src in self.our_network:
-                if dst in self.our_network:
+                if   pkt.p not in TCP_OR_UDP:
                     break
-                client = str(src)
-                remote = str(dst)
-                remote_port = pkt.data.dport
-            elif dst in self.our_network:
-                if src in self.our_network:
+                
+                src = to_address(pkt.src)
+                dst = to_address(pkt.dst)
+
+                if   src in self.our_network:
+                    if dst in self.our_network:
+                        break
+                    client = str(src)
+                    remote = str(dst)
+                    remote_port = pkt.data.dport
+                elif dst in self.our_network:
+                    if src in self.our_network:
+                        break
+                    client = str(dst)
+                    remote = str(src)
+                    remote_port = pkt.data.sport
+                else:
                     break
-                client = str(dst)
-                remote = str(src)
-                remote_port = pkt.data.sport
-            else:
-                break
-            
-            k = "{};{};{};flow".format(client, remote, remote_port)
-            if self.recently.seen(k):
-                break
+                
+                k = "{};{};{};flow".format(client, remote, remote_port)
+                if self.recently.seen(k):
+                    break
 
-            if PRINT_PACKET_FLOW:
-                PRINT_PACKET_FLOW("{} <-> {}#{}".format(client, remote, remote_port))
+                if PRINT_PACKET_FLOW:
+                    PRINT_PACKET_FLOW("{} <-> {}#{}".format(client, remote, remote_port))
 
-            self.redis.submit(self.redis.flow_to_redis, client, k)
+                self.redis.submit(self.redis.flow_to_redis, client, k)
 
-        if PCAP_STATS:
-            timer.stop()
+            if PCAP_STATS:
+                timer.stop()
+
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END process_data")
 
