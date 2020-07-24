@@ -50,8 +50,12 @@ def main():
         cname = len(r.keys('{};*;cname'.format(client_address)))
         nx = len(r.keys('{};*;nx'.format(client_address)))
         flow = len(r.keys('{};*;flow'.format(client_address)))
-                
-        print('  {} ({}): dns: {}   cname: {}   nx: {}   flow: {}'.format(client, seen_count, dns, cname, nx, flow))
+        icmp = len(r.keys('{};*;icmp'.format(client_address)))
+        rst = len(r.keys('{};*;rst'.format(client_address)))
+        
+        print('  {} ({}): dns: {}   cname: {}   nx: {}   flow: {}   icmp: {}   rst: {}'.format(
+                client, seen_count, dns, cname, nx, flow, icmp, rst)
+             )
     
     return
 
