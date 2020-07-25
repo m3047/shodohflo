@@ -53,9 +53,10 @@ Two skins are shipped:
 
 * **graph** is the vanilla, very first version
 * **graph2** which is now the default, has rollovers which provide additional metadata:
-  * **clients** the "our network" addresses which generated the artifacts
+  * **targets** for recon netflow indicators, this was the target of the netflow
+  * **clients** the "our network" addresses which generated the artifacts or for recon the originator
   * **types** the type of artifact; usually there is only one
-  * **ports** netflows, only used when the origin is _address_, provide a list of the remote ports
+  * **ports** netflows, only used when the origin is _address_, provide a list of the remote ports or for recon netflows both the source and destination ports
 
 ### UI Elements
 
@@ -84,3 +85,28 @@ Refreshes the current view.
 The _Clear_ button will clear collected data for the address specified in _Filter_, and if _Filter_ is set to
 `--all--` then all data is cleared.
 
+### Recon Netflows
+
+Recon artifacts are indicated by the address being in a shade of red. Recon artifacts are presented for netflows only.
+Both clients (originators) and targets (destinations) of the flow are indicated for addresses on the own network as well as remote; **this includes
+flows which are strictly within the own network**.
+
+The rationale for including this is the revelation that some web sites are probing their local environment (and some web browsers are
+allowing it!).
+
+There are two triggers for this artifact:
+
+* **ICMP Type 3 (Destination Unreachable)** These indicate that a port or host is unreachable; or they can indicate that a network is
+unreachable. We just group them all together.
+* **TCP RST** Many network stacks respond with RST (rather than ICMP type 3) when a port is not open for TCP.
+
+Since these are a hypothetical server responding about service availability, the source and
+destination are reversed from the actual flow over the wire. The _client_ is the address which sent the undeliverable packet and the _target_
+is the address they sent it to. Port numbers follow the same semantics.
+
+##### False positives
+
+I have two devices on my SOHO network which produce false positives regularly:
+
+* **ICMP Destination Unreachable for own DNS requests** I have a _Roku_ and an _Asus_ wireless repeater which regularly emit _ICMP Port Unreachable_ when the nameserver replies to their legitimate (?) DNS requests. This shows up as a source port 53 and a destination high port originating from the evil nameserver and targeting the poor dumb device.
+* **Netbios, Rendezvous, etc.** The _Asus_ repeater periodically probes for TCP services. I don't know why, and I've never been able to shut it off. I view it as a free pentesting service.
