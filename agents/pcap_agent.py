@@ -295,7 +295,7 @@ class Server(object):
 
                     client = str(dst)
                     remote = str(to_address(bounce.dst))
-                    remote_port = bounce.data.dport
+                    remote_port = ':'.join(bounce.data.sport, bounce.data.dport)
                     
                     k = "{};{};{};{};icmp".format(client, remote, remote_port, icmp_code)
                     
@@ -308,14 +308,15 @@ class Server(object):
                             # This is a special case where there is a TCP RST seen, and we
                             # want to capture it even if the remote is on our network.
                             ptype = 'rst'
+                            remote_port = ':'.join(pkt.data.dport, pkt.data.sport)
                         elif src in self.our_network:
                             break
                         else:
                             # This is the normal case.
                             ptype = 'flow'
+                            remote_port = pkt.data.sport
                         client = str(dst)
                         remote = str(src)
-                        remote_port = pkt.data.sport
                         k = "{};{};{};{}".format(client, remote, remote_port, ptype)
                     elif src in self.our_network:
                         # We've already established dst is not in our network or we would have
