@@ -41,8 +41,12 @@ def details(link):
     detail_list = []
     for k in METADATA_ORDERING:
         if k in md and md[k]:
+            if k == 'ports':
+                md_values = ( v.replace(':','&rarr;') for v in sorted(md[k]) )
+            else:
+                md_values = sorted(md[k])
             detail_list.append('<span class="header">{}</span><br/>{}<br/>'.format(
-                    k, '<br/>'.join( v for v in sorted(md[k]) )
+                    k, '<br/>'.join( md_values )
                 ))
     
     return detail_list and '<div class="details">' + ''.join(detail_list) + '</div>' or ''
