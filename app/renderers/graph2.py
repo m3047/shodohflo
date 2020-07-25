@@ -14,10 +14,23 @@
 # limitations under the License.
 """Graph -- the Default Renderer"""
 
-def muted(text,mute):
-    """Renders some text muted."""
+METADATA_ORDERING = ('clients','targets','ports','types')
+
+def style(text,mute, recon):
+    """Styles some text.
+    
+    The two styles are:
+      muted:    When something was not selected in filter_by but show_all is true.
+      recon:    When something was the initiator (client) or target of possible
+                recon activity indicators.
+    """
+    styles = []
     if mute:
-        fmt = '<span class="muted">{}</span>'
+        styles.append('muted')
+    if recon:
+        styles.append('recon')
+    if styles:
+        fmt = '<span class="' + ' '.join(styles) + '">{}</span>'
     else:
         fmt = '{}'
     return fmt.format(text)
@@ -26,8 +39,8 @@ def details(link):
     """Get details for a Link object."""
     md = link.metadata
     detail_list = []
-    for k in sorted(md.keys()):
-        if md[k]:
+    for k in METADATA_ORDERING:
+        if k in md and md[k]:
             detail_list.append('<span class="header">{}</span><br/>{}<br/>'.format(
                     k, '<br/>'.join( v for v in sorted(md[k]) )
                 ))
@@ -47,11 +60,11 @@ def render_chain(chain, seen=None):
     else:
         seen = seen.copy()
     if chain.artifact in seen:
-        return muted(chain.artifact, not chain.is_target)
+        return style(chain.artifact, not chain.is_target, chain.recon_activity())
     seen.add(chain.artifact)
     return ''.join([
               '<div class="artifact">',
-              muted(chain.artifact, not chain.is_target),
+              style(chain.artifact, not chain.is_target, chain.recon_activity()),
               details(chain),
               '</div>',
               chain.children and '&nbsp;&rarr; ' or '',

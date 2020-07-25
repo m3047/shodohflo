@@ -60,10 +60,13 @@ class Link(object):
     be found in the metadata attribute. This is a dictionary containing the following
     potential keys. Some of the keys are specific to a ClientArtifact subclass.
 
+    targets     Set of addresses targeted.
     clients     all: Set of all client addresses with this artifact.
     types       all: Set of all artifact types as strings.
     ports       NetflowArtifact: Set of port numbers associated with flows.
     """
+    RECON_INDICATORS = set(('ICMP','RST'))
+    
     def __init__(self, origin, observations=[], is_target=True):
         """Links in a chain.
         
@@ -75,13 +78,21 @@ class Link(object):
         self.reference_count = 0
         self.children = []
         self._depth = None
-        md = dict(clients=set(), types=set(), ports=set())
+        md = dict(clients=set(), types=set(), ports=set(), targets=set())
         for obs in observations:
             for k in md.keys():
                 md[k] |= obs.metadata_for(k)
         self.metadata = md
         return
-    
+
+    def recon_activity(self):
+        """Return True if possible recon activity was detected.
+        
+        This consists of an artifact (address) being the initiator or recipient of ICMP
+        Unreachable notifications or TCP RSTs.
+        """
+        return not self.metadata['types'].isdisjoint(self.RECON_INDICATORS)
+
     def build(self, origin_type, origins, mappings, target, internal=None):
         """Build the chain from the origin."""
         if internal is None:

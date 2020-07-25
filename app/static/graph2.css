@@ -9,6 +9,9 @@ div.iblock
         { display:inline-block; vertical-align:middle }
 
 .muted  { color:#888888 }
+.recon  { color:#aa0000 }
+.muted.recon
+        { color:#ff8888 }
 
 div.artifact
         { position:relative; display:inline }
