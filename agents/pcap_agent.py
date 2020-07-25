@@ -30,13 +30,21 @@ or that you're not communicating with it on the interface you're watching. Other
 traffic coming from the Redis server will trigger the logic which communicates
 with the redis server.
 
-Keys written to Redis:
+Keys written to Redis in all cases include remote addresses/ports as part of the key,
+and the value is a relative count, not the true number of packets:
 
     <client-address>;<remote-address>;<remote-port>;flow -> count (TTL_GRACE)
-        Remote addresses/ports and a relative count, not the true number of packets
+
+    <client-address>;<remote-address>;<remote-port>;rst -> count (TTL_GRACE)
+
+    <client-address>;<remote-address>;<remote-port>;<icmp-code>;icmp -> count (TTL_GRACE)
+        ICMP code is one of the unreachable codes accompanying type 3
 
 Packets between two nodes on the "our" network are not captured. Only traffic arriving
 at (destined for) "our" network is captured.
+
+EXCEPTION: ICMP unreachable and TCP RST packets are captured regardless of origin and
+client is the destination of the packet.
 
 NOTE: Traffic leaving the host running this agent is not captured. Only traffic
 arriving at the interface is captured.
@@ -100,7 +108,10 @@ PACKET_MR_PROMISC = 1
 # As set in socket.h
 SOL_PACKET = 263
 
+ICMP_DST_UNREACHABLE = 3
+
 TCP_OR_UDP = set((socket.IPPROTO_TCP, socket.IPPROTO_UDP))
+PROTOCOLS = set((socket.IPPROTO_TCP, socket.IPPROTO_UDP, socket.IPPROTO_ICMP))
 
 # Start/end of coroutines.
 PRINT_COROUTINE_ENTRY_EXIT = None
@@ -113,8 +124,13 @@ STATISTICS_PRINTER = logging.info
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
 
-def get_socket(interface, network):
-    """Return a Packet Socket on the specified interface."""
+def get_socket(interface, network, blocking=False):
+    """Return a Packet Socket on the specified interface.
+    
+    blocking isn't ordinarily used. It is provided for situations where you
+    want to import the module and use get_socket() interactively: in such
+    cases it is often easier to just have it blocking.
+    """
 
     network = ipaddress.ip_network(network)
     if isinstance(network, ipaddress.IPv4Network):
@@ -123,7 +139,12 @@ def get_socket(interface, network):
     else:
         ip_type = ETH_IP6
         ip_class = dpkt.ip6.IP6
-    sock = socket.socket(socket.AF_PACKET, socket.SOCK_DGRAM|socket.SOCK_NONBLOCK)
+    if blocking:
+        blocking = 0
+    else:
+        blocking = socket.SOCK_NONBLOCK
+    sock = socket.socket(socket.AF_PACKET, socket.SOCK_DGRAM|blocking)
+    #sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW|blocking)
     sock.bind((interface, ip_type))
 
     # All of the rest of this is to set the socket into promiscuous mode.
@@ -243,28 +264,72 @@ class Server(object):
             once = Once()
             while once():
 
-                if   pkt.p not in TCP_OR_UDP:
+                if   pkt.p not in PROTOCOLS:
                     break
-                
+
                 src = to_address(pkt.src)
                 dst = to_address(pkt.dst)
 
-                if   src in self.our_network:
-                    if dst in self.our_network:
+                if pkt.p == socket.IPPROTO_ICMP:
+
+                    # In the ICMP case we care about a machine in our network which is receiving
+                    # ICMP unreachable notifications.
+                    if dst not in self.our_network:
                         break
-                    client = str(src)
-                    remote = str(dst)
-                    remote_port = pkt.data.dport
-                elif dst in self.our_network:
-                    if src in self.our_network:
+                    if not isinstance(pkt.data, dpkt.icmp.ICMP):
                         break
+                    icmp = pkt.data
+                    if icmp.type != ICMP_DST_UNREACHABLE:
+                        break
+                        
+                    icmp_code = icmp.code
+                    if not isinstance(icmp.data, dpkt.icmp.ICMP.Unreach):
+                        logging.warn('Expected icmp.ICMP.Unreach, found {}'.format(type(icmp.data)))
+                        break
+                    if not isinstance(icmp.data.data, self.Packet):
+                        logging.warn('Expected {}, found {}'.format(type(self.Packet), type(icmp.data.data)))
+                        break
+                    bounce = icmp.data.data
+                    if bounce.p not in TCP_OR_UDP:
+                        break
+
                     client = str(dst)
-                    remote = str(src)
-                    remote_port = pkt.data.sport
+                    remote = str(to_address(bounce.dst))
+                    remote_port = ':'.join((str(port) for port in (bounce.data.sport, bounce.data.dport)))
+                    
+                    k = "{};{};{};{};icmp".format(client, remote, remote_port, icmp_code)
+                    
+                elif pkt.p in TCP_OR_UDP:
+                    # In the TCP and UDP cases we need to figure out if the traffic is between a
+                    # machine in our network and a machine not in our network, as those are the
+                    # only normal cases we care about (but we care about them both).
+                    if   dst in self.our_network:
+                        if pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
+                            # This is a special case where there is a TCP RST seen, and we
+                            # want to capture it even if the remote is on our network.
+                            ptype = 'rst'
+                            remote_port = ':'.join((str(port) for port in (pkt.data.dport, pkt.data.sport)))
+                        elif src in self.our_network:
+                            break
+                        else:
+                            # This is the normal case.
+                            ptype = 'flow'
+                            remote_port = pkt.data.sport
+                        client = str(dst)
+                        remote = str(src)
+                        k = "{};{};{};{}".format(client, remote, remote_port, ptype)
+                    elif src in self.our_network:
+                        # We've already established dst is not in our network or we would have
+                        # caught it above.
+                        client = str(src)
+                        remote = str(dst)
+                        remote_port = pkt.data.dport
+                        k = "{};{};{};flow".format(client, remote, remote_port)
+                    else:
+                        break
                 else:
                     break
-                
-                k = "{};{};{};flow".format(client, remote, remote_port)
+                    
                 if self.recently.seen(k):
                     break
 

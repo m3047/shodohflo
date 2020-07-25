@@ -29,8 +29,9 @@ class ClientArtifact(object):
     """Base class for artifacts."""
     
     METADATA_FOR = dict(
+        targets     = lambda self: str(self.client_address),
         clients     = lambda self: str(self.client_address),
-        types       = lambda self: str(type(self)).split("'")[1].split('.')[-1],
+        types       = lambda self: str(type(self)).split("'")[1].split('.')[-1].replace('Artifact',''),
         ports       = lambda self: str(self.remote_port)
     )
     
@@ -392,7 +393,7 @@ class NetflowArtifact(CounterArtifact):
         return merged.values()
     
     def copy(self):
-        new = NetflowArtifact()
+        new = type(self)()
         new.client_address = self.client_address
         new.remote_address = self.remote_address
         new.remote_port = self.remote_port
@@ -400,11 +401,51 @@ class NetflowArtifact(CounterArtifact):
         new.metadata = { t:self.metadata_for(t) for t in self.METADATA_TYPES }
         return new
 
+class ReconArtifact(NetflowArtifact):
+    """(Possible) Reconnaissance Artifact.
+    
+    These are a special case of netflow, because the sense of things is reverse. We
+    want to list the client in the visible listing, and the targets (remotes) in the
+    rollover.
+    """
+    REVERSED_METADATA_TYPES = {'targets','types','ports'}
+    def reversed(self):
+        """Create a new ReconArtifact with the client and remote reversed."""
+        new = type(self)()
+        new.client_address = self.remote_address
+        new.remote_address = self.client_address
+        new.remote_port = self.remote_port
+        new.count = self.count
+        new.METADATA_TYPES = self.REVERSED_METADATA_TYPES
+        new.metadata = { t:new.metadata_for(t) for t in self.REVERSED_METADATA_TYPES }
+        return new
+        
+
+class RSTArtifact(ReconArtifact):
+    """TCP RST artifact.
+    
+    A special type of netflow artifact which can indicate an attempt to connect to
+    a TCP port which is not listening (a probing attempt). As such it is also captured
+    between two addresses on the "our" network.
+    """
+    pass
+
+class ICMPArtifact(ReconArtifact):
+    """ICMP Unreachable artifact.
+    
+    A special type of netflow artifact which can indicate an attempt to connect to
+    a UDP port which is not listening (a probing attempt). As such it is also captured
+    between two addresses on the "our" network.
+    """
+    pass
+
 ARTIFACT_MAPPER = dict(
         dns     = DNSArtifact,
         cname   = CNAMEArtifact,
         nx      = NXDOMAINArtifact,
-        flow    = NetflowArtifact
+        flow    = NetflowArtifact,
+        rst     = RSTArtifact,
+        icmp    = ICMPArtifact
     )
 
 def Artifact(r_client, k):
@@ -443,6 +484,8 @@ def get_client_data(r_client, all_clients, network):
             if artifact is None:
                 continue
             all_artifacts.append(artifact)
+            if isinstance(artifact, ReconArtifact):
+                all_artifacts.append(artifact.reversed())
 
     return all_artifacts
 
