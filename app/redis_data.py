@@ -417,8 +417,7 @@ class ReconArtifact(NetflowArtifact):
         new.remote_port = self.remote_port
         new.count = self.count
         new.METADATA_TYPES = self.REVERSED_METADATA_TYPES
-        new.metadata = { t:self.metadata_for(t) for t in ('types', 'ports') }
-        new.metadata['targets'] = self.metadata_for('clients')
+        new.metadata = { t:new.metadata_for(t) for t in self.REVERSED_METADATA_TYPES }
         return new
         
 
