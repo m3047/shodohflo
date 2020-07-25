@@ -16,12 +16,12 @@ div.iblock
 div.artifact
         { position:relative; display:inline }
 div.details
-        { display:none; position:absolute; left:1em; top:1.5em;
+        { display:none; position:absolute; left:1em; top:1.2em;
           color:#44aa44; background-color:#eeeeff; padding:0.5em;
           z-index:1
         }
 div:hover > div.details
-        { display:inline }
+        { display:inline; overflow: auto; max-height: 12em; width: 12em }
 span.header
         { text-decoration:underline }
         
