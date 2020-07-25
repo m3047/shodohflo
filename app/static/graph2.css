@@ -16,7 +16,7 @@ div.iblock
 div.artifact
         { position:relative; display:inline }
 div.details
-        { display:none; position:absolute; left:1em; top:1.2em;
+        { display:none; position:absolute; left:1.5em; top:1.2em;
           color:#44aa44; background-color:#eeeeff; padding:0.5em;
           z-index:1
         }
