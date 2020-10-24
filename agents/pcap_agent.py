@@ -299,7 +299,7 @@ class Server(object):
                         remote_port = ':'.join((str(port) for port in (bounce.data.sport, bounce.data.dport)))
                     except AttributeError:
                         remote_port = '--'
-                        logging.error('AttributeError: ICMP: {}   Bounce: {}'.format(type(icmp), type(bounce)))
+                        logging.error('AttributeError: src: {} dest: {} ICMP: {}   Bounce: {}'.format(src, dst, repr(icmp), type(bounce)))
                     
                     k = "{};{};{};{};icmp".format(client, remote, remote_port, icmp_code)
                     
