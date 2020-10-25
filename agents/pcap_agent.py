@@ -121,6 +121,8 @@ PRINT_PACKET_FLOW = None
 # Similar to the foregoing, but always set to something valid.
 STATISTICS_PRINTER = logging.info
 
+UNSIGNED_BIG_ENDIAN = dict(byteorder='big', signed=False)
+
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
 
@@ -295,11 +297,24 @@ class Server(object):
 
                     client = str(dst)
                     remote = str(to_address(bounce.dst))
-                    try:
-                        remote_port = ':'.join((str(port) for port in (bounce.data.sport, bounce.data.dport)))
-                    except AttributeError:
+                    once = Once()
+                    while once():
+                        # dpkt may or may not succeed in recognizing and decoding the header of the bounced packet.
+                        try:
+                            remote_port = ':'.join((str(port) for port in (bounce.data.sport, bounce.data.dport)))
+                            break
+                        except AttributeError:
+                            pass
+                        if bounce.p in TCP_OR_UDP:
+                            remote_port = ':'.join((str(int.from_bytes(bounce.data[x:x+2], **UNSIGNED_BIG_ENDIAN))
+                                                    for x in (0,2)
+                                                  ))
+                            break
+                    
                         remote_port = '--'
-                        logging.error('AttributeError: src: {} dest: {} ICMP: {}   Bounce: {}'.format(src, dst, repr(icmp), type(bounce)))
+                        logging.error('Martian Packet: src:{} dest:{} code:{} proto:{} bytes:{}'.format(
+                                                client, dst, icmp_code, bounce.p, hexify(bounce.data))
+                                     )
                     
                     k = "{};{};{};{};icmp".format(client, remote, remote_port, icmp_code)
                     
