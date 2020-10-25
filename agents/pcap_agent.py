@@ -297,25 +297,14 @@ class Server(object):
 
                     client = str(dst)
                     remote = str(to_address(bounce.dst))
-                    once = Once()
-                    while once():
-                        # dpkt may or may not succeed in recognizing and decoding the header of the bounced packet.
-                        try:
-                            remote_port = ':'.join((str(port) for port in (bounce.data.sport, bounce.data.dport)))
-                            break
-                        except AttributeError:
-                            pass
-                        if bounce.p in TCP_OR_UDP:
-                            remote_port = ':'.join((str(int.from_bytes(bounce.data[x:x+2], **UNSIGNED_BIG_ENDIAN))
-                                                    for x in (0,2)
-                                                  ))
-                            break
-                    
-                        remote_port = '--'
-                        logging.error('Martian Packet: src:{} dest:{} code:{} proto:{} bytes:{}'.format(
-                                                client, dst, icmp_code, bounce.p, hexify(bounce.data))
-                                     )
-                    
+                    # dpkt may or may not succeed in recognizing and decoding the header of the bounced packet.
+                    try:
+                        remote_port = ':'.join((str(port) for port in (bounce.data.sport, bounce.data.dport)))
+                    except AttributeError:
+                        remote_port = ':'.join((str(int.from_bytes(bounce.data[x:x+2], **UNSIGNED_BIG_ENDIAN))
+                                                for x in (0,2)
+                                                ))
+                        
                     k = "{};{};{};{};icmp".format(client, remote, remote_port, icmp_code)
                     
                 elif pkt.p in TCP_OR_UDP:
