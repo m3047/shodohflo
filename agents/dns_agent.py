@@ -184,7 +184,6 @@ class RedisHandler(RedisBaseHandler):
         """NXDomain records to Redis - core logic."""
         self.client_to_redis(client_address)
         k = '{};{};nx'.format(client_address, name)
-        print(k)
         self.redis.incr(k)
         self.redis.expire(k, TTL_GRACE)
         return
@@ -276,7 +275,6 @@ class DnsTap(Consumer):
         if response.rcode() == rcode.NXDOMAIN:
             redis.submit(redis.nx_to_redis, client_address, response.question[0].name.to_text().lower())
         elif response.rcode() == rcode.NOERROR:
-            print("Got an answer...")
             redis.submit(redis.answer_to_redis, client_address, response.answer)
 
         if DNS_STATS:
