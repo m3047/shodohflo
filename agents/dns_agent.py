@@ -143,6 +143,21 @@ class RedisHandler(RedisBaseHandler):
         self.redis.expire(k, TTL_GRACE)
         return
 
+    def answer_to_redis_(self, client_address, answer):
+        """Address and CNAME records to redis - core logic."""
+        self.client_to_redis(client_address)
+        for rrset in answer:
+            name = rrset.name.to_text()
+            if rrset.rdtype in self.ADDRESS_RECORDS:
+                ttl = rrset.ttl
+                for rr in rrset:
+                    self.a_to_redis(client_address, name.lower(), ttl, rr.to_text().lower())
+                continue
+            if rrset.rdtype == rdatatype.CNAME:
+                self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
+                continue
+        return
+
     def answer_to_redis(self, backlog_timer, client_address, answer):
         """Address and CNAME records to Redis.
         
@@ -156,26 +171,7 @@ class RedisHandler(RedisBaseHandler):
         if DNS_STATS:
             timer = self.answer_to_redis_stats.start_timer()
 
-        try:
-            self.client_to_redis(client_address)
-            for rrset in answer:
-                name = rrset.name.to_text()
-                if rrset.rdtype in self.ADDRESS_RECORDS:
-                    ttl = rrset.ttl
-                    for rr in rrset:
-                        self.a_to_redis(client_address, name.lower(), ttl, rr.to_text().lower())
-                    continue
-                if rrset.rdtype == rdatatype.CNAME:
-                    self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
-                    continue
-        except ConnectionError as e:
-            if not self.stop:
-                logging.fatal('redis.exceptions.ConnectionError: {}'.format(e))
-                self.stop = True
-        except Exception as e:
-            if not self.stop:
-                traceback.print_exc()
-                self.stop = True
+        self.redis_executor(self.answer_to_redis_, client_address, answer)
         
         if DNS_STATS:
             timer.stop()
@@ -183,7 +179,16 @@ class RedisHandler(RedisBaseHandler):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END answer_to_redis")
         return
-        
+    
+    def nx_to_redis_(self, client_address, name):
+        """NXDomain records to Redis - core logic."""
+        self.client_to_redis(client_address)
+        k = '{};{};nx'.format(client_address, name)
+        print(k)
+        self.redis.incr(k)
+        self.redis.expire(k, TTL_GRACE)
+        return
+    
     def nx_to_redis(self, backlog_timer, client_address, name):
         """NXDOMAIN records to Redis.
         
@@ -197,19 +202,7 @@ class RedisHandler(RedisBaseHandler):
         if DNS_STATS:
             timer = self.answer_to_redis_stats.start_timer()
 
-        try:
-            self.client_to_redis(client_address)
-            k = '{};{};nx'.format(client_address, name)
-            self.redis.incr(k)
-            self.redis.expire(k, TTL_GRACE)
-        except ConnectionError as e:
-            if not self.stop:
-                logging.error('redis.exceptions.ConnectionError: {}'.format(e))
-                self.stop = True
-        except Exception as e:
-            if not self.stop:
-                traceback.print_exc()
-                self.stop = True
+        self.redis_executor(self.nx_to_redis_, client_address, name)
 
         if DNS_STATS:
             timer.stop()
@@ -283,6 +276,7 @@ class DnsTap(Consumer):
         if response.rcode() == rcode.NXDOMAIN:
             redis.submit(redis.nx_to_redis, client_address, response.question[0].name.to_text().lower())
         elif response.rcode() == rcode.NOERROR:
+            print("Got an answer...")
             redis.submit(redis.answer_to_redis, client_address, response.answer)
 
         if DNS_STATS:

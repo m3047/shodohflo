@@ -51,6 +51,13 @@ class RedisBaseHandler(object):
         self.stop = False
         return
     
+    def client_to_redis(self, client_address):
+        """Called internally by the other *_to_redis() methods to update the client."""
+        k = 'client;{}'.format(client_address)
+        self.redis.incr(k)
+        self.redis.expire(k, self.ttl_grace)
+        return
+    
     def submit(self, func, *args):
         """Submit a Redis update to run."""
         if self.stop:
@@ -59,10 +66,20 @@ class RedisBaseHandler(object):
         self.event_loop.run_in_executor(self.executor, func, *args)
         return
     
-    def client_to_redis(self, client_address):
-        """Called internally by the other *_to_redis() methods to update the client."""
-        k = 'client;{}'.format(client_address)
-        self.redis.incr(k)
-        self.redis.expire(k, self.ttl_grace)
+    def redis_executor(self, func, *args):
+        """Encapsulate exceptions which might occur within redis threads.
+        
+        All calling of Redis network functions is done inside of one of these
+        blocks.
+        """
+        try:
+            func(*args)
+        except ConnectionError as e:
+            if not self.stop:
+                logging.error('redis.exceptions.ConnectionError: {}'.format(e))
+                self.stop = True
+        except Exception as e:
+            if not self.stop:
+                traceback.print_exc()
+                self.stop = True
         return
-    
