@@ -8,8 +8,6 @@ If you didn't put the repository in `/usr/local/share/` you may have to adjust t
 
 ### pcap-agent@.service
 
-Assumes that Redis is present with a target of `redis.target`.
-
 If you didn't put the repository in `/usr/local/share/` you may have to adjust the `ExecStart` path.
 
 Assumes that the "our" network is `10.0.0.0/8`.

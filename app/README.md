@@ -104,9 +104,33 @@ Since these are a hypothetical server responding about service availability, the
 destination are reversed from the actual flow over the wire. The _client_ is the address which sent the undeliverable packet and the _target_
 is the address they sent it to. Port numbers follow the same semantics.
 
+##### Should I be concerned?
+
+Some observed false positives are listed below. The kind of activity which would concern me enough to fire up wireshark would be seeing multiple
+ports showing for an own network _target_, or the same port(s) on different targets with a common _client_. Keep in mind that high ports are
+utilized by clients making TCP connections.
+
+Example #1. Suppose the _client_ `10.1.1.224` is attempting reconnoiter and they want to see what ports are open on `10.1.0.1` which it knows is
+the gateway. (NOTE: if you're running the `pcap-agent` on `10.1.0.1` you may not detect this because it may not see the outgoing RSTs;
+ideally the `pcap-agent` is listening to a span port on the switch.):
+
+* `10.1.1.224` shows `10.1.0.1` as _target_ and destination ports are the ones it is probing on the target.
+* `10.1.0.1` shows `10.1.1.224` as _client_ and the destination ports are the ones being probed on it.
+
+Example #2. Suppose the _client_ `10.1.1.224` is attempting to locate instances of _Redis_ listening on port 6379:
+
+* `10.1.1.224` shows a number of different _targets_ and port 6379 is listed as the destination port multiple times.
+* The various targets show `10.1.1.224` as the common _client_ and each shows destination port 6379.
+
 ##### False positives
 
 I have two devices on my SOHO network which produce false positives regularly:
 
 * **ICMP Destination Unreachable for own DNS requests** I have a _Roku_ and an _Asus_ wireless repeater which regularly emit _ICMP Port Unreachable_ when the nameserver replies to their legitimate (?) DNS requests. This shows up as a source port 53 and a destination high port originating from the evil nameserver and targeting the poor dumb device.
 * **Netbios, Rendezvous, etc.** The _Asus_ repeater periodically probes for TCP services. I don't know why, and I've never been able to shut it off. I view it as a free pentesting service.
+
+Other (off network) sources of RSTs:
+
+* **Load Balancers** If you see an own network address listed as _client_ and an off network address associated with a web site, you're probably seeing a load balancer in front of the actual server which has lost state. There are various causes for this. For example the server may send a FIN, the load balancer tears down state, we never get the FIN and send another ACK, the load balancer sends an RST (instead of having the server resend the FIN).
+* **Misconfigurations** Typically a load balancer or port forwarding issue. If you see an own address listed as _target_ coming from port 80 it may be because HTTPS traffic is being misdirected to port 80.
+* **Off Path Disruption** Something may be listening to (TCP) traffic and decide to inject an RST to disrupt the connection. (The "Great Firewall of China" was observed to act like this in the past.)
