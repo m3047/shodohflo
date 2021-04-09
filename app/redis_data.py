@@ -448,11 +448,17 @@ ARTIFACT_MAPPER = dict(
         icmp    = ICMPArtifact
     )
 
-def Artifact(r_client, k):
-    """Factory function which returns instances of ClientArtifact for the passed key."""
+def Artifact(r_client, k, types=None):
+    """Factory function which returns instances of ClientArtifact for the passed key.
+    
+    types specifies the key types we're interested in. If not supplied then this
+    returns all the things.
+    """
 
     artifact_type = k.split(';')[-1]
     if artifact_type not in ARTIFACT_MAPPER:
+        return None
+    if types is not None and artifact_type not in types:
         return None
     
     v = r_client.get(k)
