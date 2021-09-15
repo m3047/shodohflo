@@ -247,6 +247,36 @@ class DnsTap(Consumer):
         # nameserver configuration, so the impact of the race condition is minor.
         self.performance_hint = True
         return True
+    
+    def post_to_redis(self, message):
+        """Analyze and post to the ShoDoHFlo redis database."""
+        
+        if self.message_type and message.field('type')[1] != self.message_type:
+            if self.performance_hint:
+                logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
+                self.performance_hint = False
+            return
+        # NOTE: Do these lookups AFTER verifying that we have the correct message type!
+        response = message.field('response_message')[1]
+        client_address = message.field('query_address')[1]
+
+        redis = self.redis
+
+        if response.rcode() == rcode.NXDOMAIN:
+            redis.submit(redis.nx_to_redis, client_address, response.question[0].name.to_text().lower())
+        elif response.rcode() == rcode.NOERROR:
+            redis.submit(redis.answer_to_redis, client_address, response.answer)
+        
+        return
+    
+    def process_message(self, message):
+        """This can be subclassed to add/remove message processing.
+        
+        Arguments:
+            message: DNS wire format message.
+        """
+        self.post_to_redis(message)
+        return
 
     def consume(self, frame):
         """Consume Dnstap data.
@@ -259,23 +289,8 @@ class DnsTap(Consumer):
             timer = self.consume_stats.start_timer()
 
         message = dnstap.Dnstap(frame).field('message')[1]
-        if self.message_type and message.field('type')[1] != self.message_type:
-            if self.performance_hint:
-                logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
-                self.performance_hint = False
-            if DNS_STATS:
-                timer.stop()
-            return True
-        # NOTE: Do these lookups AFTER verifying that we have the correct message type!
-        response = message.field('response_message')[1]
-        client_address = message.field('query_address')[1]
 
-        redis = self.redis
-
-        if response.rcode() == rcode.NXDOMAIN:
-            redis.submit(redis.nx_to_redis, client_address, response.question[0].name.to_text().lower())
-        elif response.rcode() == rcode.NOERROR:
-            redis.submit(redis.answer_to_redis, client_address, response.answer)
+        self.post_to_redis(message)
 
         if DNS_STATS:
             timer.stop()
