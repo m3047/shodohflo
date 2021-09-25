@@ -289,8 +289,7 @@ class DnsTap(Consumer):
             timer = self.consume_stats.start_timer()
 
         message = dnstap.Dnstap(frame).field('message')[1]
-
-        self.post_to_redis(message)
+        self.process_message(message)
 
         if DNS_STATS:
             timer.stop()
