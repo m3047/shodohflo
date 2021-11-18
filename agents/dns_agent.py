@@ -312,14 +312,14 @@ async def statistics_report(statistics):
                 )
     return
 
-def main():
+def main(Consumer=DnsTap):
     logging.info('DNS Agent starting. Socket: {}  Redis: {}'.format(SOCKET_ADDRESS, REDIS_SERVER))
     event_loop = asyncio.get_event_loop()
     statistics = StatisticsFactory()
     if DNS_STATS:
         asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
     Server(AsyncUnixSocket(SOCKET_ADDRESS),
-           DnsTap(event_loop, statistics),
+           Consumer(event_loop, statistics),
            event_loop
           ).listen_asyncio()
 
