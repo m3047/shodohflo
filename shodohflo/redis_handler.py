@@ -19,6 +19,7 @@ The Redis Handler is an asyncio event sink using a ThreadPoolExecutor to post to
 Redis.
 """
 
+import traceback
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import redis
