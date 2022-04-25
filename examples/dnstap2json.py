@@ -34,6 +34,14 @@ Arguments:
         and specify the receiving end of the stream of UDP packets. If not supplied,
         the JSON is written to stdout.
         
+If you send the traffic via UDP
+
+    ./dnstap2json.py /tmp/dnstap 127.0.0.1:3047
+
+then listening for UDP data can be as simple as
+
+    nc -luk 127.0.0.1 3047
+        
 Customizing the Program
 ---------------------
 
