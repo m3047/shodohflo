@@ -398,6 +398,7 @@ async def statistics_report(statistics):
                     stat['depth']['minimum'], stat['depth']['maximum'], stat['depth']['one'], stat['depth']['ten'], stat['depth']['sixty'],
                     stat['n_per_sec']['minimum'], stat['n_per_sec']['maximum'], stat['n_per_sec']['one'], stat['n_per_sec']['ten'], stat['n_per_sec']['sixty'])
                 )
+        STATISTICS_PRINTER('Packet Types: {}'.format(' '.join(( '{}={}'.format(k,statistics.packet_types[k]) for k in sorted(statistics.packet_types.keys())  )) ))
     return
     
 async def close_tasks(tasks):
