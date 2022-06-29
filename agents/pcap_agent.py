@@ -231,13 +231,6 @@ class RedisHandler(RedisBaseHandler):
 class BadPacketException(Exception):
     pass
 
-class CountingDict(dict):
-    def inc(self, k, n=1):
-        if k not in self:
-            self[k] = 0
-        self[k] += n
-        return
-
 class Server(object):
     def __init__(self, interface, our_network, event_loop, statistics):
         sock, Packet, our_network = get_socket(interface, our_network)
@@ -250,21 +243,8 @@ class Server(object):
             self.process_data_stats = statistics.Collector("process_data")
             self.socket_recv_stats = statistics.Collector("socket_recv")
             self.socket_recv_timer = self.socket_recv_stats.start_timer()
-            # Jamming this in here sideways to get some picture of what kinds of
-            # packet mangling might be occurring. This is just a running
-            # counter which never gets reset.
-            self.packet_types_counter = statistics.packet_types = CountingDict()
         return
     
-    def is_tcp_reset(self, pkt):
-        try:
-            if pkt.p != socket.IPPROTO_TCP:
-                return False
-            self.packet_types_counter.inc('.'.join(( type(p).__name__ for p in (pkt, pkt.data) )) )
-            return pkt.data.flags & dpkt.tcp.TH_RST
-        except Exception as e:
-            raise BadPacketException()
-
     def process_data(self):
         """Called by the event loop when there is a packet to process."""
         if PCAP_STATS:
@@ -335,24 +315,23 @@ class Server(object):
                     # machine in our network and a machine not in our network, as those are the
                     # only normal cases we care about (but we care about them both).
                     if   dst in self.our_network:
-                        try:
-                            #if pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
-                            if self.is_tcp_reset(pkt):
-                                # This is a special case where there is a TCP RST seen, and we
-                                # want to capture it even if the remote is on our network.
-                                ptype = 'rst'
-                                remote_port = ':'.join((str(port) for port in (pkt.data.dport, pkt.data.sport)))
-                            elif src in self.our_network:
-                                break
-                            else:
-                                # This is the normal case.
-                                ptype = 'flow'
-                                remote_port = pkt.data.sport
-                            client = str(dst)
-                            remote = str(src)
-                            k = "{};{};{};{}".format(client, remote, remote_port, ptype)
-                        except BadPacketException:
+                        if   pkt.p == socket.IPPROTO_TCP and not isinstance(pkt.data, dpkt.tcp.TCP):
+                            # Reject TCP packets which cannot be decoded.
                             break
+                        elif pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
+                            # This is a special case where there is a TCP RST seen, and we
+                            # want to capture it even if the remote is on our network.
+                            ptype = 'rst'
+                            remote_port = ':'.join((str(port) for port in (pkt.data.dport, pkt.data.sport)))
+                        elif src in self.our_network:
+                            break
+                        else:
+                            # This is the normal case.
+                            ptype = 'flow'
+                            remote_port = pkt.data.sport
+                        client = str(dst)
+                        remote = str(src)
+                        k = "{};{};{};{}".format(client, remote, remote_port, ptype)
                     elif src in self.our_network:
                         # We've already established dst is not in our network or we would have
                         # caught it above.
@@ -398,7 +377,6 @@ async def statistics_report(statistics):
                     stat['depth']['minimum'], stat['depth']['maximum'], stat['depth']['one'], stat['depth']['ten'], stat['depth']['sixty'],
                     stat['n_per_sec']['minimum'], stat['n_per_sec']['maximum'], stat['n_per_sec']['one'], stat['n_per_sec']['ten'], stat['n_per_sec']['sixty'])
                 )
-        STATISTICS_PRINTER('Packet Types: {}'.format(' '.join(( '{}={}'.format(k,statistics.packet_types[k]) for k in sorted(statistics.packet_types.keys())  )) ))
     return
     
 async def close_tasks(tasks):
