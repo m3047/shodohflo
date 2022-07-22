@@ -228,9 +228,6 @@ class RedisHandler(RedisBaseHandler):
         RedisBaseHandler.submit(self, func, *args)
         return
 
-class BadPacketException(Exception):
-    pass
-
 class Server(object):
     def __init__(self, interface, our_network, event_loop, statistics):
         sock, Packet, our_network = get_socket(interface, our_network)
