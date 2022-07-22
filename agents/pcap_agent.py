@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019 by Fred Morris Tacoma WA
+# Copyright (c) 2019,2022 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -312,7 +312,11 @@ class Server(object):
                     # machine in our network and a machine not in our network, as those are the
                     # only normal cases we care about (but we care about them both).
                     if   dst in self.our_network:
-                        if pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
+                        if   pkt.p == socket.IPPROTO_TCP and not isinstance(pkt.data, dpkt.tcp.TCP):
+                            logging.warn('TCP packet cannot be decoded {}->{}'.format(src, dst))
+                            # Reject TCP packets which cannot be decoded.
+                            break
+                        elif pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
                             # This is a special case where there is a TCP RST seen, and we
                             # want to capture it even if the remote is on our network.
                             ptype = 'rst'
