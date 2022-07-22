@@ -75,7 +75,7 @@ class RedisBaseHandler(object):
         """
         try:
             func(*args)
-        except ConnectionError as e:
+        except redis.exceptions.ConnectionError as e:
             if not self.stop:
                 logging.error('redis.exceptions.ConnectionError: {}'.format(e))
                 self.stop = True
