@@ -41,7 +41,8 @@ dnstap:
 ```
 
 **Permissions:** _Unbound_ does a crappy job logging issues with permissions on the Unix socket.
-Make sure that both _Unbound_ and the client tool have read and write access to it.
+Make sure that both _Unbound_ and the client tool (technically the "client" is actually the _server_)
+have read and write access to it.
 
 ### tap_example.py
 
