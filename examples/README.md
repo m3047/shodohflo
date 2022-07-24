@@ -1,12 +1,7 @@
-### tap_example.py
+### Using it with _BIND_
 
-`tap_example.py` captures and displays data written to a unix domain socket in _dnstap_ format.
-
-You should first `cp configuration_sample.py configuration.py` and modify appropriately.
-
-#### Using it with _BIND_
-
-_BIND_ needs to be built with _dnstap_ support:
+_BIND_ needs to be built with _dnstap_ support. **NOTE**: The ISC (https://www.isc.org/bind/) packages are
+built with _dnstap_ and _RPZ_ support.
 
 ```
 ./configure --with-libtool --enable-dnstap
@@ -22,6 +17,37 @@ options {
     ...
 };
 ```
+
+### Using it with _Unbound_
+
+Using it with _Unbound_ is similar:
+
+```
+./configure --enable-dnstap
+```
+
+Make sure you meet the prerequisites first. In particular be aware that _protobuf_ comprises a library,
+a compiler program, and another library. You need "dev" packages for everything which is "lib", not just
+protobuf.
+
+Configuring the socket would look like:
+
+```
+dnstap:
+    dnstap-enable: yes
+    dnstap-bidirectional: yes
+    dnstap-socket-path: /tmp/dnstap
+    dnstap-log-client-response-messages: yes
+```
+
+**Permissions:** _Unbound_ does a crappy job logging issues with permissions on the Unix socket.
+Make sure that both _Unbound_ and the client tool have read and write access to it.
+
+### tap_example.py
+
+`tap_example.py` captures and displays data written to a unix domain socket in _dnstap_ format.
+
+You should first `cp configuration_sample.py configuration.py` and modify appropriately.
 
 ### dnstap2json.py
 
