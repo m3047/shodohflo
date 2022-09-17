@@ -70,6 +70,8 @@ import shodohflo.protobuf.dnstap as dnstap
 from shodohflo.redis_handler import RedisBaseHandler
 from shodohflo.statistics import StatisticsFactory
 
+IGNORE = None
+
 if __name__ == "__main__":
     from configuration import *
 else:
@@ -147,14 +149,14 @@ class RedisHandler(RedisBaseHandler):
         """Address and CNAME records to redis - core logic."""
         self.client_to_redis(client_address)
         for rrset in answer:
-            name = rrset.name.to_text()
+            name = rrset.name.to_text().lower().replace('\\;',';')
             if rrset.rdtype in self.ADDRESS_RECORDS:
                 ttl = rrset.ttl
                 for rr in rrset:
-                    self.a_to_redis(client_address, name.lower(), ttl, rr.to_text().lower())
+                    self.a_to_redis(client_address, name, ttl, rr.to_text().lower())
                 continue
             if rrset.rdtype == rdatatype.CNAME:
-                self.cname_to_redis(client_address, name.lower(), rrset[0].to_text().lower())
+                self.cname_to_redis(client_address, name, rrset[0].to_text().lower())
                 continue
         return
 
@@ -201,7 +203,7 @@ class RedisHandler(RedisBaseHandler):
         if DNS_STATS:
             timer = self.answer_to_redis_stats.start_timer()
 
-        self.redis_executor(self.nx_to_redis_, client_address, name)
+        self.redis_executor(self.nx_to_redis_, client_address, name.replace('\\;',';'))
 
         if DNS_STATS:
             timer.stop()
@@ -221,11 +223,16 @@ class RedisHandler(RedisBaseHandler):
     
 class DnsTap(Consumer):
     
-    def __init__(self, event_loop, statistics, message_type=dnstap.Message.TYPE_CLIENT_RESPONSE):
+    def __init__(self, event_loop, statistics, ignore=None, message_type=dnstap.Message.TYPE_CLIENT_RESPONSE):
         """Dnstap consumer.
 
         Parameters:
-        
+
+            ignore:       It's possible to pass a list of strings. Questions will be
+                          scanned for the strings and if found the update will be ignored.
+                          This is done downstream of process_message(), which means that
+                          all messages are available there; you can choose to implement
+                          this for your use case or not.
             message_type: This agent is intended to consume client response
                           messages. You can have it process all messages by
                           setting this to None, but then you'll get potentially
@@ -233,6 +240,7 @@ class DnsTap(Consumer):
         """
         self.redis = RedisHandler(event_loop, TTL_GRACE, statistics)
         self.message_type = message_type
+        self.ignore = ignore
         if DNS_STATS:
             self.consume_stats = statistics.Collector("consume")
         return
@@ -259,11 +267,21 @@ class DnsTap(Consumer):
         # NOTE: Do these lookups AFTER verifying that we have the correct message type!
         response = message.field('response_message')[1]
         client_address = message.field('query_address')[1]
+        
+        question = None
+
+        if self.ignore is not None:
+            question = response.question[0].name.to_text().lower()
+            for s in self.ignore:
+                if s in question:
+                    return
 
         redis = self.redis
 
         if response.rcode() == rcode.NXDOMAIN:
-            redis.submit(redis.nx_to_redis, client_address, response.question[0].name.to_text().lower())
+            if question is None:
+                question = response.question[0].name.to_text().lower()
+            redis.submit(redis.nx_to_redis, client_address, question)
         elif response.rcode() == rcode.NOERROR:
             redis.submit(redis.answer_to_redis, client_address, response.answer)
         
@@ -319,7 +337,7 @@ def main(Consumer=DnsTap):
     if DNS_STATS:
         asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
     Server(AsyncUnixSocket(SOCKET_ADDRESS),
-           Consumer(event_loop, statistics),
+           Consumer(event_loop, statistics, IGNORE),
            event_loop
           ).listen_asyncio()
 
