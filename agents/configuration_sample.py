@@ -28,10 +28,14 @@ TTL_GRACE = 900         # 15 minutes
 PCAP_STATS = None
 DNS_STATS = None
 
-# Strings to ignore. Should be lowercased. Intended use is for stems,
+# Strings to ignore in DNS traffic. Should be lowercased. Intended use is for stems,
 # but bear in mind that because of seach lists if it doesn't find for example
 # example.com, system will probably also try example.com.com, etc.
 IGNORE = None
 # Ignore anything containing test.example.com, such as server.test.example.com,
 # server.test.example.com.example.com, server.test.example.com.com...:
 # IGNORE = [ 'test.example.com' ]
+
+# By default flows (but not recon artifacts) are suppressed for own network
+# flows. Setting this to FALSE records all own network flows.
+# SUPPRESS_OWN_NETWORK = True

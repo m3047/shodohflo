@@ -80,6 +80,8 @@ from shodohflo.redis_handler import RedisBaseHandler
 from shodohflo.utils import Once, Recent
 from shodohflo.statistics import StatisticsFactory
 
+SUPPRESS_OWN_NETWORK = True
+
 if __name__ == "__main__":
     from configuration import *
 else:
@@ -321,7 +323,7 @@ class Server(object):
                             # want to capture it even if the remote is on our network.
                             ptype = 'rst'
                             remote_port = ':'.join((str(port) for port in (pkt.data.dport, pkt.data.sport)))
-                        elif src in self.our_network:
+                        elif SUPPRESS_OWN_NETWORK and src in self.our_network:
                             break
                         else:
                             # This is the normal case.
