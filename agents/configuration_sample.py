@@ -37,5 +37,7 @@ IGNORE = None
 # IGNORE = [ 'test.example.com' ]
 
 # By default flows (but not recon artifacts) are suppressed for own network
-# flows. Setting this to FALSE records all own network flows.
+# flows. Setting this to FALSE records all own network flows. Regardless,
+# FLOWS ORIGINATING FROM THE MONITORED INTERFACE WILL NOT BE RECORDED. This
+# technical limitation is discussed elsewhere.
 # SUPPRESS_OWN_NETWORK = True
