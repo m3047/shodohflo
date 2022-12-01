@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2020 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,10 +92,15 @@ import dns.rcode as rcode
 
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
-from shodohflo.fstrm import Consumer, AsyncUnixSocket
+from shodohflo.fstrm import Consumer, AsyncUnixSocket, PYTHON_IS_311
 from shodohflo.fstrm import Server as FstrmServer
 import shodohflo.protobuf.dnstap as dnstap
 from shodohflo.statistics import StatisticsFactory
+
+if PYTHON_IS_311:
+    from asyncio import CancelledError
+else:
+    from concurrent.futures import CancelledError
 
 logging.basicConfig(level=logging.INFO)
 
@@ -112,6 +117,10 @@ STATS = 60
 
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
+
+def lart():
+    print('dnstap2json <unix-socket> {udp-address:udp-port}', file=sys.stderr)
+    sys.exit(1)
 
 class FieldMapping(object):
     """Maps a JSON name to its value."""
@@ -387,8 +396,9 @@ class Server(FstrmServer):
     
     def run_forever(self):
         """Close the writer after exiting the loop."""
-        FstrmServer.run_forever(self)
-        self.writer.close()
+        raise RuntimeError('This should never be raised, as it should never be called.')
+        #FstrmServer.run_forever(self)
+        #self.writer.close()
         return
 
 async def statistics_report(statistics):
@@ -405,24 +415,77 @@ async def statistics_report(statistics):
                 )
     return
 
+async def close_tasks(tasks):
+    all_tasks = asyncio.gather(*tasks)
+    all_tasks.cancel()
+    try:
+        await all_tasks
+    except CancelledError:
+        pass
+    return
+
+def main_36(socket_address, destination, Mapper_Class):
+    event_loop = asyncio.get_event_loop()
+    statistics = StatisticsFactory()
+    if STATS:
+        asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
+    writer = UniversalWriter(destination, event_loop)
+
+    try:
+        event_loop.run_until_complete(
+            Server( AsyncUnixSocket(socket_address),
+                    DnsTap(event_loop, statistics, Mapper_Class(), writer),
+                    event_loop, writer=writer
+                ).listen_asyncio()
+            )
+    except KeyboardInterrupt:
+        pass
+
+    writer.close()
+    event_loop.run_until_complete(
+            close_tasks(asyncio.Task.all_tasks(event_loop))
+        )
+    event_loop.close()
+    return
+
+async def main_311(socket_address, destination, Mapper_Class):
+    event_loop = asyncio.get_running_loop()
+    statistics = StatisticsFactory()
+    if STATS:
+        event_loop.create_task( statistics_report(statistics) )
+    writer = UniversalWriter(destination, event_loop)
+    
+    try:
+        await Server(
+                AsyncUnixSocket(socket_address),
+                DnsTap(event_loop, statistics, Mapper_Class(), writer),
+                event_loop, writer=writer
+            ).listen_asyncio()
+    except CancelledError:
+        pass
+    
+    writer.close()
+    return
+
 def main(JSONMapper_class=JSONMapper):
     """Hi, thanks for reading this!
     
     You can subclass JSONMapper to alter the records which get selected as well as
     the JSON which is output.
     """
+    if len(sys.argv) < 2:
+        lart()
     socket_address = sys.argv[1]
     destination = len(sys.argv) > 2 and sys.argv[2] or None
     logging.info('dnstap2json starting. Socket: {}  Destination: {}'.format(socket_address, destination or 'STDOUT'))
-    event_loop = asyncio.get_event_loop()
-    statistics = StatisticsFactory()
-    if STATS:
-        asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
-    writer = UniversalWriter(destination, event_loop)
-    Server(AsyncUnixSocket(socket_address),
-           DnsTap(event_loop, statistics, JSONMapper_class(), writer),
-           event_loop, writer=writer
-          ).listen_asyncio()
+
+    main_args = (socket_address, destination, JSONMapper_class)
+    if PYTHON_IS_311:
+        asyncio.run(main_311(*main_args))
+    else:
+        main_36(*main_args)
+    
+    return
 
 if __name__ == '__main__':
     main()

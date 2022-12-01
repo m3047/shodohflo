@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,30 @@ Security. See the documentation here:
 
     https://farsightsec.github.io/fstrm/index.html
 
+
+BACKWARDS INCOMPATIBLE CHANGES TO Server FOR Python 3.11
+-------------------------------------------------
+
+Key takeaways:
+
+* PYTHON_IS_311 is a boolean which indicates whether or not the module is
+  operating in 3.11 mode
+  
+* Server.listen_asyncio() is now a coroutine.
+
+For continued use with earlier versions of Python:
+
+* Server.run_forever() has been replaced by Server.run_36()
+
+* Server.run_forever() now incorporates some logic which was previously
+  in Server.listen_asyncio()
+  
+* You should call loop.close() yourself in the context which Server()
+  was created in.
+  
+See shodohflo/examples/dnstap2json.py as a reference example.
+
+
 Structure of a Frame
 --------------------
 
@@ -38,6 +62,7 @@ a control frame the (zero) payload length field is followed by:
 There is only one field type defined, which is a content type represented as an
 arbitrary string.
 
+
 The Handshake
 -------------
 
@@ -55,6 +80,7 @@ Data frames are then sent for an indeterminate period of time.
 
 * <- STOP when a client is done it sends this control frame
 
+
 The PRINT_ Constants
 --------------------
 
@@ -65,10 +91,18 @@ set to a print function which accepts a string, for example:
     PRINT_THAT = print
 """
 
+import sysconfig
+
+PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
+
 import os
 import socket
 import asyncio
-from concurrent.futures import CancelledError
+
+if PYTHON_IS_311:
+    from asyncio import CancelledError
+else:
+    from concurrent.futures import CancelledError
 
 FSTRM_CONTROL_ACCEPT = 1
 FSTRM_CONTROL_START = 2
@@ -142,8 +176,9 @@ class AsyncUnixSocket(UnixSocket):
     def get_socket(self, callback, loop):
         self.clean_path()
 
-        return loop.run_until_complete(
-                   asyncio.start_unix_server(callback, self.path, loop=loop))
+        return loop.create_task(
+                   asyncio.start_unix_server(callback, self.path)
+            )
 
 class Consumer(object):
     """A data consumer."""
@@ -373,7 +408,7 @@ class Server(object):
         Asyncrhonous: Use AsyncUnixSocket + Server.listen_asyncio()
     """
     
-    def __init__(self,stream,consumer,loop=None,data_type=None, recv_size=None):
+    def __init__(self,stream,consumer,loop=None,data_type=None):
         """Initialize the server.
         
         stream: a StreamingSocket
@@ -381,9 +416,10 @@ class Server(object):
         loop: if loop is supplied, then an asyncio server is created.
         data_type: type of payload. If not supplied, then whatever the client
                 advertises is sent back as acceptable.
-        recv_size: NOT USED.
         """
         if loop:
+            # NOTE: Bad data hiding here, the server is finalized when listen_asyncio()
+            #       is called. This allows __init__() not to be awaited.
             self.server = stream.get_socket(self.process_data, loop)
         else:
             self.sock = stream.get_socket()
@@ -456,49 +492,52 @@ class Server(object):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END process_data")        
         return
-
-    @staticmethod
-    async def close_tasks(tasks):
-        all_tasks = asyncio.gather(*tasks)
-        all_tasks.cancel()
-        try:
-            await all_tasks
-        except CancelledError:
-            pass
-        return
-        
+    
     def run_forever(self):
+        """This is deprecated. See the pydoc header for further information."""
+        raise RuntimeError('Server.run_forever() has been removed. See pydoc3 shodohflo.fstrm')
+        
+    async def run_36(self):
         """Called internally by listen_asyncio() to process the stream.
         
-        Broken out as a separate method in case someone wants to override
-        the try block used to run the loop or the task cleanup in the
-        immediate aftermath.
+        Does what run_forever() previously did, as well as some of whate
+        listen_asyncio() did. You now need to call loop.close() yourself
+        in the context in which Server() was created.
         """
-        try:
-            self.loop.run_forever()
-        except KeyboardInterrupt:
-            pass
 
-        tasks = asyncio.Task.all_tasks(self.loop)
-        if tasks:
-            self.loop.run_until_complete(self.close_tasks(tasks))
+        #self.loop.run_forever()
+        forever_lock = asyncio.Lock()
+        while True:
+            await forever_lock.acquire()
 
         return
+    
+    async def run_311(self):
+        """Called internally by listen_asyncio() to process the stream.
         
-    def listen_asyncio(self):
+        Waits on the Server.server instance. All other cleanup is performed
+        by the (presumed) enclosing call to asyncio.run().
+        """
+        async with self.server as server:
+            await server.serve_forever()
+             
+        return
+    
+    async def listen_asyncio(self):
         """Listens using asyncio.
         
-        Consumer.consume() will be called as a coroutine in the supplied event loop.
-        The code here supplies the wrapper, your Consumer implementation doesn't
-        need to change although odds are you're changing it to take advantage of
-        asyncio. ;-)
-        """
-        self.run_forever()
-
-        self.server.close()
-        self.loop.run_until_complete(self.server.wait_closed())
-
-        self.loop.close()
+        BREAKING CHANGE FOR Python 3.11 compatibility
+        ---------------------------------------------
         
+        This routine is now a coroutine. See the pydoc header for the file for further info.
+        """
+        # NOTE: First thing, finalize the server.
+        self.server = await self.server
+        
+        if PYTHON_IS_311:
+            await self.run_311()
+        else:
+            await self.run_36()
+
         return
         
