@@ -500,15 +500,20 @@ class Server(object):
     async def run_36(self):
         """Called internally by listen_asyncio() to process the stream.
         
-        Does what run_forever() previously did, as well as some of whate
+        Does what run_forever() previously did, as well as some of what
         listen_asyncio() did. You now need to call loop.close() yourself
         in the context in which Server() was created.
         """
 
         #self.loop.run_forever()
-        forever_lock = asyncio.Lock()
-        while True:
-            await forever_lock.acquire()
+
+        #forever_lock = asyncio.Lock()
+        #while True:
+            #await forever_lock.acquire()
+
+        # Without callbacks or context where Future.set_result() is invoked this future
+        # waits for cancellation and (re)raises CancelledError.
+        await self.loop.create_future()
 
         return
     
@@ -531,7 +536,7 @@ class Server(object):
         
         This routine is now a coroutine. See the pydoc header for the file for further info.
         """
-        # NOTE: First thing, finalize the server.
+        # NOTE: First thing, realize the server from the Future created during __init__().
         self.server = await self.server
         
         if PYTHON_IS_311:
