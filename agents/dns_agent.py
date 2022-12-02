@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2020 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,10 +65,15 @@ import dns.rcode as rcode
 
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
-from shodohflo.fstrm import Consumer, Server, AsyncUnixSocket
+from shodohflo.fstrm import Consumer, Server, AsyncUnixSocket, PYTHON_IS_311
 import shodohflo.protobuf.dnstap as dnstap
 from shodohflo.redis_handler import RedisBaseHandler
 from shodohflo.statistics import StatisticsFactory
+
+if PYTHON_IS_311:
+    from asyncio import CancelledError
+else:
+    from concurrent.futures import CancelledError
 
 IGNORE = None
 
@@ -91,7 +96,10 @@ if TTL_GRACE is None:
     TTL_GRACE = 900         # 15 minutes
 
 if USE_DNSPYTHON:
-    import dns.resolver as resolver
+    if PYTHON_IS_311:
+        from dns.resolver import resolve as dns_query
+    else:
+        from dns.resolver import query as dns_query
 
 # Start/end of coroutines. You will probably also want to enable it in shodohflo.fstrm.
 PRINT_COROUTINE_ENTRY_EXIT = None
@@ -117,7 +125,7 @@ class RedisHandler(RedisBaseHandler):
     
     def redis_server(self):
         if USE_DNSPYTHON:
-            server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
+            server = dns_query(REDIS_SERVER).response.answer[0][0].to_text()
         else:
             server = REDIS_SERVER
         return server
@@ -330,16 +338,70 @@ async def statistics_report(statistics):
                 )
     return
 
+async def close_tasks(tasks):
+    all_tasks = asyncio.gather(*tasks)
+    all_tasks.cancel()
+    try:
+        await all_tasks
+    except CancelledError:
+        pass
+    return
+
+def main_36(socket_address, statistics, ignore, Consumer_class):
+    event_loop = asyncio.get_event_loop()
+    if statistics is not None:
+        event_loop.create_task(statistics_report(statistics))
+
+    try:
+        event_loop.run_until_complete(
+            Server( AsyncUnixSocket(socket_address),
+                    Consumer_class(event_loop, statistics, ignore),
+                    event_loop
+                ).listen_asyncio()
+            )
+    except KeyboardInterrupt:
+        pass
+
+    event_loop.run_until_complete(
+            close_tasks(asyncio.Task.all_tasks(event_loop))
+        )
+    event_loop.close()
+
+    return
+
+async def main_311(socket_address, statistics, ignore, Consumer_class):
+    event_loop = asyncio.get_running_loop()
+    if statistics is not None:
+        event_loop.create_task( statistics_report(statistics) )
+    
+    try:
+        await Server(
+                AsyncUnixSocket(socket_address),
+                Consumer_class(event_loop, statistics, ignore),
+                event_loop
+            ).listen_asyncio()
+    except CancelledError:
+        pass
+    
+    return
+
 def main(Consumer=DnsTap):
     logging.info('DNS Agent starting. Socket: {}  Redis: {}'.format(SOCKET_ADDRESS, REDIS_SERVER))
-    event_loop = asyncio.get_event_loop()
-    statistics = StatisticsFactory()
-    if DNS_STATS:
-        asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
-    Server(AsyncUnixSocket(SOCKET_ADDRESS),
-           Consumer(event_loop, statistics, IGNORE),
-           event_loop
-          ).listen_asyncio()
+    statistics = DNS_STATS and StatisticsFactory() or None
+
+    main_args = (
+            SOCKET_ADDRESS,
+            statistics,
+            IGNORE,
+            Consumer
+        )
+    
+    if PYTHON_IS_311:
+        asyncio.run(main_311(*main_args))
+    else:
+        main_36(*main_args)
+    
+    return
 
 if __name__ == '__main__':
     main()

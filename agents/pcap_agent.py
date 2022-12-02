@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019,2022 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,6 +59,10 @@ set to a print function which accepts a string, for example:
     PRINT_THAT = print
 """
 
+import sysconfig
+
+PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
+
 import sys
 from os import path
 import struct
@@ -80,6 +84,11 @@ from shodohflo.redis_handler import RedisBaseHandler
 from shodohflo.utils import Once, Recent
 from shodohflo.statistics import StatisticsFactory
 
+if PYTHON_IS_311:
+    from asyncio import CancelledError
+else:
+    from concurrent.futures import CancelledError
+
 SUPPRESS_OWN_NETWORK = True
 
 if __name__ == "__main__":
@@ -98,7 +107,10 @@ if TTL_GRACE is None:
     TTL_GRACE = 900         # 15 minutes
 
 if USE_DNSPYTHON:
-    import dns.resolver as resolver
+    if PYTHON_IS_311:
+        from dns.resolver import resolve as dns_query
+    else:
+        from dns.resolver import query as dns_query
 
 # As set in if_ether.h
 ETH_IP4 = 0x0800
@@ -182,7 +194,7 @@ class RedisHandler(RedisBaseHandler):
 
     def redis_server(self):
         if USE_DNSPYTHON:
-            server = resolver.query(REDIS_SERVER).response.answer[0][0].to_text()
+            server = dns_query(REDIS_SERVER).response.answer[0][0].to_text()
         else:
             server = REDIS_SERVER
         return server
@@ -392,23 +404,29 @@ async def close_tasks(tasks):
 def main():
     interface, our_network = sys.argv[1:3]
     logging.info('Packet Capture Agent starting. Interface: {}  Our Network: {}  Redis: {}'.format(interface, our_network, REDIS_SERVER))
-    event_loop = asyncio.get_event_loop()
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(event_loop)
     statistics = StatisticsFactory()
     server = Server(interface, our_network, event_loop, statistics)
     event_loop.add_reader(server.sock, server.process_data)
     if PCAP_STATS:
-        asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
+        event_loop.create_task(statistics_report(statistics))
         
     try:
         event_loop.run_forever()
     except KeyboardInterrupt:
         pass
     
-    tasks = asyncio.Task.all_tasks(event_loop)
+    if PYTHON_IS_311:
+        tasks = asyncio.all_tasks(event_loop)
+    else:
+        tasks = asyncio.Task.all_tasks(event_loop)
+
     if tasks:
         event_loop.run_until_complete(close_tasks(tasks))
 
     server.close()
+    event_loop.close()
     
     return
 
