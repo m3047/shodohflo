@@ -507,10 +507,6 @@ class Server(object):
 
         #self.loop.run_forever()
 
-        #forever_lock = asyncio.Lock()
-        #while True:
-            #await forever_lock.acquire()
-
         # Without callbacks or context where Future.set_result() is invoked this future
         # waits for cancellation and (re)raises CancelledError.
         await self.loop.create_future()
