@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -410,7 +410,7 @@ def main():
     server = Server(interface, our_network, event_loop, statistics)
     event_loop.add_reader(server.sock, server.process_data)
     if PCAP_STATS:
-        event_loop.create_task(statistics_report(statistics))
+        stats_routine = event_loop.create_task(statistics_report(statistics))
         
     try:
         event_loop.run_forever()

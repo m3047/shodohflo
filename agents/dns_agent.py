@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -350,7 +350,7 @@ async def close_tasks(tasks):
 def main_36(socket_address, statistics, ignore, Consumer_class):
     event_loop = asyncio.get_event_loop()
     if statistics is not None:
-        event_loop.create_task(statistics_report(statistics))
+        stats_routine = event_loop.create_task(statistics_report(statistics))
 
     try:
         event_loop.run_until_complete(
@@ -372,7 +372,7 @@ def main_36(socket_address, statistics, ignore, Consumer_class):
 async def main_311(socket_address, statistics, ignore, Consumer_class):
     event_loop = asyncio.get_running_loop()
     if statistics is not None:
-        event_loop.create_task( statistics_report(statistics) )
+        stats_routine = event_loop.create_task( statistics_report(statistics) )
     
     try:
         await Server(

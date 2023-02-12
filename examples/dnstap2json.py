@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -284,6 +284,7 @@ class UniversalWriter(object):
             self.fd = sys.stdout
             set_blocking(self.fd.fileno(), False)
         self.loop = event_loop
+        self.tasks = set()
         return
     
     def close(self):
@@ -326,14 +327,26 @@ class UniversalWriter(object):
         if self.destination is not None:
             return msg.encode()
         return msg
+    
+    def write(self, msg, backlog_timer):
+        """To be called to queue something to be output.
         
-    async def write(self, msg, backlog_timer):
+        Handles task management.
+        """
+        promise = []
+        task = self.loop.create_task( self.write_( msg, backlog_timer, promise ) )
+        self.tasks.add(task)
+        promise.append(task)
+        return
+        
+    async def write_(self, msg, backlog_timer, promise):
         """Called to queue something to be output."""
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START write")
         await self.loop.sock_sendall(self, self.encode_data(msg))
         if backlog_timer:
             backlog_timer.stop()
+        self.tasks.remove(promise[0])
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END write")
         return
@@ -375,9 +388,10 @@ class DnsTap(Consumer):
             return True
 
         data = self.mapper.map_fields(message)
-        self.loop.create_task(self.writer.write(json.dumps(data) + "\n",
-                                                STATS and self.backlog.start_timer() or None
-                             )                 )
+        # Actually queues a separate coroutine.
+        self.writer.write( json.dumps(data) + "\n",
+                           STATS and self.backlog.start_timer() or None
+                    )
         if STATS:
             timer.stop()
         return True
@@ -428,7 +442,7 @@ def main_36(socket_address, destination, Mapper_Class):
     event_loop = asyncio.get_event_loop()
     statistics = StatisticsFactory()
     if STATS:
-        asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
+        stats_routine = asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
     writer = UniversalWriter(destination, event_loop)
 
     try:
@@ -452,7 +466,7 @@ async def main_311(socket_address, destination, Mapper_Class):
     event_loop = asyncio.get_running_loop()
     statistics = StatisticsFactory()
     if STATS:
-        event_loop.create_task( statistics_report(statistics) )
+        stats_routine = event_loop.create_task( statistics_report(statistics) )
     writer = UniversalWriter(destination, event_loop)
     
     try:

@@ -224,6 +224,7 @@ class DataProcessor(object):
         self.data_type = data_type
         self.data_length = None
         self.control_length = None
+        self.tasks = set()
         return
     
     def append(self, data):
@@ -331,13 +332,14 @@ class DataProcessor(object):
             
         return
     
-    async def schedule_consumer(self, consumer, frame):
+    async def schedule_consumer(self, consumer, frame, promise):
         """Wrapper for Consumer.consume()."""
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START schedule_consumer")
 
         if not consumer.consume(frame):
             self.running = False
+            self.tasks.remove(promise[0])
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END schedule_consumer")
         return
@@ -349,7 +351,10 @@ class DataProcessor(object):
         
         if not self.is_control_frame:
             if loop:
-                loop.create_task(self.schedule_consumer(consumer, self.frame))
+                promise = []
+                task = loop.create_task(self.schedule_consumer(consumer, self.frame, promise))
+                promise.append(task)
+                self.tasks.add(task)
                 return FSTRM_DATA_FRAME
             else:
                 return consumer.consume(self.frame) and FSTRM_DATA_FRAME or False
