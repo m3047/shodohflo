@@ -426,6 +426,7 @@ class Server(object):
             # NOTE: Bad data hiding here, the server is finalized when listen_asyncio()
             #       is called. This allows __init__() not to be awaited.
             self.server = stream.get_socket(self.process_data, loop)
+            self.processors = set()
         else:
             self.sock = stream.get_socket()
         self.loop = loop
@@ -466,6 +467,7 @@ class Server(object):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START process_data")
         processor = DataProcessor(self.data_type)
+        self.processors.add(processor)
         active = True
         while active:
             try:
@@ -494,6 +496,7 @@ class Server(object):
                 active = False
 
         writer.close()
+        self.processors.remove(processor)
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END process_data")        
         return
