@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2022 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -339,7 +339,8 @@ class DataProcessor(object):
 
         if not consumer.consume(frame):
             self.running = False
-            self.tasks.remove(promise[0])
+        
+        self.tasks.remove(promise[0])
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END schedule_consumer")
         return
