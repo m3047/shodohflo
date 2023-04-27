@@ -259,7 +259,11 @@ class Server(object):
     def process_data(self):
         """Called by the event loop when there is a packet to process."""
         if PCAP_STATS:
-            self.socket_recv_timer.stop()
+            if self.socket_recv_timer is not None:
+                self.socket_recv_timer.stop()
+                self.socket_recv_timer = None
+            else:
+                logging.error('Server.socket_recv_timer unexpectedly None')
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("START process_data")
 
@@ -322,15 +326,18 @@ class Server(object):
                     k = "{};{};{};{};icmp".format(client, remote, remote_port, icmp_code)
                     
                 elif pkt.p in TCP_OR_UDP:
+                    # Reject packets which cannot be decoded.
+                    if type(pkt.data) is bytes:
+                        logging.warn('{} packet cannot be decoded {}->{}'.format(
+                                            pkt.p == socket.IPPROTO_TCP and 'TCP' or 'UDP',
+                                            str(src), str(dst)
+                                )       )
+                        break
                     # In the TCP and UDP cases we need to figure out if the traffic is between a
                     # machine in our network and a machine not in our network, as those are the
                     # only normal cases we care about (but we care about them both).
                     if   dst in self.our_network:
-                        if   pkt.p == socket.IPPROTO_TCP and not isinstance(pkt.data, dpkt.tcp.TCP):
-                            logging.warn('TCP packet cannot be decoded {}->{}'.format(src, dst))
-                            # Reject TCP packets which cannot be decoded.
-                            break
-                        elif pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
+                        if pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
                             # This is a special case where there is a TCP RST seen, and we
                             # want to capture it even if the remote is on our network.
                             ptype = 'rst'
@@ -371,7 +378,10 @@ class Server(object):
             PRINT_COROUTINE_ENTRY_EXIT("END process_data")
 
         if PCAP_STATS:
-            self.socket_recv_timer = self.socket_recv_stats.start_timer()
+            if self.socket_recv_timer is None:
+                self.socket_recv_timer = self.socket_recv_stats.start_timer()
+            else:
+                logging.error('Server.socket_recv_timer is unexpectedly NOT None.')
         return
 
     def close(self):
