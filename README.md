@@ -43,7 +43,7 @@ and _protocol buffer_ implementations.
 
 1. Download or clone the repo.
 1. Make sure the _dnspython_ package is installed (see _PyPI.org_)
-1. Make sure your DNS server is compiled with _dnstap_ and configured to write to a unix domain socket.
+1. Make sure your DNS server is compiled with _dnstap_ and configured to write `CLIENT_RESPONSE` messages to a unix domain socket.
 1. Make sure that `SOCKET_ADDRESS` in `tap_example.py` references the socket location.
 1. You should be able to run the `tap_example.py` program.
 1. You can symlink / move / copy the `shodohflo` package wherever you wish.
