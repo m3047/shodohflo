@@ -19,6 +19,17 @@ mechanism.
 This is a _WSGI_ app. For security and other reasons you probably don't want to put the _Werkzeug_ app directly up
 on the internet. The _Flask_ documentation discusses numerous deployment options: http://flask.pocoo.org/docs/1.0/deploying/
 
+##### RKVDNS
+
+[RKVDNS](/m3047/rkvdns) is available as an alternate, readonly transport for retrieving data from the _Redis_
+database. This involves the following activities:
+
+* Set up an _RKVDNS_ instance in front of _Redis_.
+* Delegate the (DNS) zone from somewhere.
+* Make sure the _RKVDNS_ zone is reachable from your caching resolver.
+
+Various creative topologies as well as DNS tools can (and should) be deployed to control access.
+
 ##### Bookmarking
 
 I find it useful to bookmark the URI for filtered client data on that particular device. The URI for a client typically follows
