@@ -13,8 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Things useful for dealing with Redis."""
+"""Redis Data Connector.
 
+This is the historical connector, using Redis. When you see r_client
+as a parameter, pass a Redis connection.
+"""
+
+import sys
 from database import *
 
 def get_all_clients(r_client):
@@ -82,11 +87,3 @@ def clear_client_data(r_client, target, all_clients):
         for k in r_client.keys('{};*'.format(str(client))):
             r_client.delete(k)
     return
-
-def merge_mappings(target, mapping):
-    """Merge mappings of the same Artifact type."""
-    collected = {}
-    for artifact in mapping:
-        artifact.append_to_mapping(type(artifact), collected)
-    return [ merged for k in collected.keys() for merged in k.merge(collected[k], target) ]
-    

@@ -13,7 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Things useful for dealing with Redis."""
+"""Things useful for dealing with Redis.
+
+This is the core of the data architecture for Artifacts.
+
+Some artifacts have list-valued data, some have number-valued data. You can look
+at RedisHandler in the dns agent to see how list values are constructed, in
+particular the a_to_redis() and cname_to_redis() methods.
+"""
 
 import ipaddress
 
@@ -94,6 +101,12 @@ class ListArtifact(ClientArtifact):
     
     It's always a list of onames (left hand side values). Or in other words
     it is the reverse of normal DNS lookup.
+    
+    The values tend to look like
+    
+        ;<value>;;<value>;{;<value>;{...}}
+        
+    In most cases (I say that with some trepidation) there is only one value.
     """
     def extract_value_data(self,v):
         self.onames = [ oname for oname in v.split(';') if oname ]
@@ -439,4 +452,11 @@ ARTIFACT_MAPPER = dict(
         rst     = RSTArtifact,
         icmp    = ICMPArtifact
     )
+
+def merge_mappings(target, mapping):
+    """Merge mappings of the same Artifact type."""
+    collected = {}
+    for artifact in mapping:
+        artifact.append_to_mapping(type(artifact), collected)
+    return [ merged for k in collected.keys() for merged in k.merge(collected[k], target) ]
 
