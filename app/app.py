@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019 by Fred Morris Tacoma WA
+# Copyright (c) 2019, 2023 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,15 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+HTTP_HOST = 'localhost'
+HTTP_PORT = 3047
+REDIS_SERVER = 'localhost'
+RKVDNS = None
+USE_DNSPYTHON = False
+DEFAULT_TEMPLATE = 'graph'
+AVAILABLE_TEMPLATES = ['graph']
+
 if __name__ == "__main__":
     from configuration import *
-else:
-    HTTP_HOST = 'localhost'
-    HTTP_PORT = 3047
-    REDIS_SERVER = 'localhost'
-    USE_DNSPYTHON = False
-    DEFAULT_TEMPLATE = 'graph'
-    AVAILABLE_TEMPLATES = ['graph']
     
 if USE_DNSPYTHON:
     import dns.resolver as resolver
@@ -32,11 +33,19 @@ if USE_DNSPYTHON:
 import importlib
 import ipaddress
 
-import redis
 from flask import Flask, request, render_template, url_for, redirect
 
-from redis_data import get_all_clients, get_client_data, clear_client_data, merge_mappings, \
-                       DNSArtifact, CNAMEArtifact, NXDOMAINArtifact, NetflowArtifact
+if RKVDNS:
+    from rkvdns_data import get_all_clients, get_client_data, clear_client_data, merge_mappings, \
+                            DNSArtifact, CNAMEArtifact, NXDOMAINArtifact, NetflowArtifact, \
+                            RKVDNSConnection
+else:
+    import redis
+    from redis_data import  get_all_clients, get_client_data, clear_client_data, merge_mappings, \
+                            DNSArtifact, CNAMEArtifact, NXDOMAINArtifact, NetflowArtifact
+import sys
+import cProfile
+import pstats
 
 app = Flask(__name__)
 
@@ -289,7 +298,11 @@ def graph(origin):
     if origin not in ('address','fqdn'):
         origin = 'address'
 
-    r = redis_client()
+    if RKVDNS:
+        r = RKVDNSConnection( RKVDNS, warn_if_noanswer=True )
+    else:
+        r = redis_client()
+
     all_clients = get_all_clients(r)
 
     try:
@@ -315,22 +328,24 @@ def graph(origin):
         template = DEFAULT_TEMPLATE
     render_chain = importlib.import_module('renderers.' + template).render_chain
     
-    if request.args.get('clear',False):
-        clear_client_data(r, target, all_clients)
+    if not RKVDNS:
+        if request.args.get('clear',False):
+            clear_client_data(r, target, all_clients)
             
     all = request.args.get('all', '')
     if all or filter == '--all--':
         data = get_client_data(r, all_clients, prefix)
     else:
         data = get_client_data(r, all_clients, target)
-    
+            
     return render_template(template + '.html',
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),
                     all=all,
                     table=render_chains(origin, data, target, render_chain),
                     message=message,
-                    template=template)
+                    template=template,
+                    readonly=(RKVDNS is not None))
 
 if __name__ == "__main__":
     app.run(port=HTTP_PORT, host=HTTP_HOST)
