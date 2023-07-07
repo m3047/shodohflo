@@ -81,7 +81,7 @@ USE_DNSPYTHON = False
 LOG_LEVEL = None
 TTL_GRACE = None
 DNS_STATS = None
-IGNORE = None
+IGNORE_DNS = None
 
 if __name__ == "__main__":
     from configuration import *
@@ -391,7 +391,7 @@ def main(Consumer=DnsTap):
     main_args = (
             SOCKET_ADDRESS,
             statistics,
-            IGNORE,
+            IGNORE_DNS,
             Consumer
         )
     

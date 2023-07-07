@@ -31,13 +31,23 @@ DNS_STATS = None
 # Strings to ignore in DNS traffic. Should be lowercased. Intended use is for stems,
 # but bear in mind that because of seach lists if it doesn't find for example
 # example.com, system will probably also try example.com.com, etc.
-IGNORE = None
+IGNORE_DNS = None
 # Ignore anything containing test.example.com, such as server.test.example.com,
 # server.test.example.com.example.com, server.test.example.com.com...:
-# IGNORE = [ 'test.example.com' ]
+# IGNORE_DNS = [ 'test.example.com' ]
 
 # By default flows (but not recon artifacts) are suppressed for own network
 # flows. Setting this to FALSE records all own network flows. Regardless,
 # FLOWS ORIGINATING FROM THE MONITORED INTERFACE WILL NOT BE RECORDED. This
 # technical limitation is discussed elsewhere.
 # SUPPRESS_OWN_NETWORK = True
+
+# Sometimes we have services which answer questions from local clients and which
+# generate a nontrivial number of flows. IGNORE_FLOW allows you to define tuples
+# which do not generate flows if they represent either end of the flow. This does
+# not affect the recording of peers.
+IGNORE_FLOW = None
+# We have a nameserver on 10.0.11.23 which answers a lot of questions and we don't
+# care to see it. We also have a web server which receives telemetry updates which
+# we don't care to see.
+# IGNORE_FLOW = { ('10.0.11.23', 53), ('10.0.11.42', 443) }
