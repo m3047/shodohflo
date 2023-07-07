@@ -41,7 +41,7 @@
           {% if message %}<p class="message">{{ message }}</p>{% endif %}
           <p>
             <input type="submit" name="update" value="Update"/>&nbsp;
-            &nbsp;<input type="submit" name="clear" value="Clear"/>&nbsp;
+            {% if not readonly %}&nbsp;<input type="submit" name="clear" value="Clear"/>&nbsp;{% endif %}
             <input type="hidden" name="template" value="{{ template }}"/>
           </p>
         </td>
