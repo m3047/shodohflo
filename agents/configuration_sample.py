@@ -34,7 +34,7 @@ DNS_STATS = None
 IGNORE_DNS = None
 # Ignore anything containing test.example.com, such as server.test.example.com,
 # server.test.example.com.example.com, server.test.example.com.com...:
-# IGNORE_DNS = [ 'test.example.com' ]
+# IGNORE_DNS = { 'test.example.com' }
 
 # By default flows (but not recon artifacts) are suppressed for own network
 # flows. Setting this to FALSE records all own network flows. Regardless,
