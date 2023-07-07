@@ -89,16 +89,15 @@ if PYTHON_IS_311:
 else:
     from concurrent.futures import CancelledError
 
+REDIS_SERVER = 'localhost'
+USE_DNSPYTHON = False
+LOG_LEVEL = None
+TTL_GRACE = None
+PCAP_STATS = None
 SUPPRESS_OWN_NETWORK = True
 
 if __name__ == "__main__":
     from configuration import *
-else:
-    REDIS_SERVER = 'localhost'
-    USE_DNSPYTHON = False
-    LOG_LEVEL = None
-    TTL_GRACE = None
-    PCAP_STATS = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
