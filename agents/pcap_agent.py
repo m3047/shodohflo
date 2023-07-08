@@ -37,11 +37,15 @@ and the value is a relative count, not the true number of packets:
 
     <client-address>;<remote-address>;<remote-port>;rst -> count (TTL_GRACE)
 
+    <client-address>;<remote-address>;peer -> count (TTL_GRACE)
+
+    <remote-address>;<client-address>;peer -> count (TTL_GRACE)
+
     <client-address>;<remote-address>;<remote-port>;<icmp-code>;icmp -> count (TTL_GRACE)
         ICMP code is one of the unreachable codes accompanying type 3
 
-Packets between two nodes on the "our" network are not captured. Only traffic arriving
-at (destined for) "our" network is captured.
+Packets between two nodes on the "our" network are not captured unless SUPPRESS_OWN_NETWORK
+is set to False. Only traffic arriving at (destined for) "our" network is captured.
 
 EXCEPTION: ICMP unreachable and TCP RST packets are captured regardless of origin and
 client is the destination of the packet.
@@ -89,16 +93,16 @@ if PYTHON_IS_311:
 else:
     from concurrent.futures import CancelledError
 
+REDIS_SERVER = 'localhost'
+USE_DNSPYTHON = False
+LOG_LEVEL = None
+TTL_GRACE = None
+PCAP_STATS = None
 SUPPRESS_OWN_NETWORK = True
+IGNORE_FLOW = None
 
 if __name__ == "__main__":
     from configuration import *
-else:
-    REDIS_SERVER = 'localhost'
-    USE_DNSPYTHON = False
-    LOG_LEVEL = None
-    TTL_GRACE = None
-    PCAP_STATS = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -199,7 +203,7 @@ class RedisHandler(RedisBaseHandler):
             server = REDIS_SERVER
         return server
     
-    def flow_to_redis(self, backlog_timer, client_address, k):
+    def flow_to_redis(self, backlog_timer, client_address, *keys):
         """Log a netflow to Redis.
         
         Scheduled with RedisHandler.submit().
@@ -215,8 +219,9 @@ class RedisHandler(RedisBaseHandler):
         try:
             self.client_to_redis(client_address)
 
-            self.redis.incr(k)
-            self.redis.expire(k, TTL_GRACE)
+            for k in keys:
+                self.redis.incr(k)
+                self.redis.expire(k, TTL_GRACE)
         except ConnectionError as e:
             if not self.stop:
                 logging.error('redis.exceptions.ConnectionError: {}'.format(e))
@@ -232,7 +237,7 @@ class RedisHandler(RedisBaseHandler):
         if PRINT_COROUTINE_ENTRY_EXIT:
             PRINT_COROUTINE_ENTRY_EXIT("END flow_to_redis")
         return
-
+    
     def submit(self, func, *args):
         if PCAP_STATS:
             backlog_timer = self.backlog.start_timer()
@@ -369,7 +374,15 @@ class Server(object):
                 if PRINT_PACKET_FLOW:
                     PRINT_PACKET_FLOW("{} <-> {}#{}".format(client, remote, remote_port))
 
-                self.redis.submit(self.redis.flow_to_redis, client, k)
+                if k.endswith('icmp') or k.endswith('rst'):
+                    redis_keys = [ k ]
+                elif (pkt.src, pkt.data.sport) in IGNORE_FLOW or (pkt.dst, pkt.data.dport) in IGNORE_FLOW:
+                    # This will still update the "client;..." key.
+                    redis_keys = [ ]
+                else:
+                    redis_keys = [ k ] + [ '{};{};peer'.format(*peers) for peers in ((src,dst), (dst,src)) ]
+
+                self.redis.submit(self.redis.flow_to_redis, client, *redis_keys )
 
             if PCAP_STATS:
                 timer.stop()

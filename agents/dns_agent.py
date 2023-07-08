@@ -75,17 +75,16 @@ if PYTHON_IS_311:
 else:
     from concurrent.futures import CancelledError
 
-IGNORE = None
+SOCKET_ADDRESS = '/tmp/dnstap'
+REDIS_SERVER = 'localhost'
+USE_DNSPYTHON = False
+LOG_LEVEL = None
+TTL_GRACE = None
+DNS_STATS = None
+IGNORE_DNS = None
 
 if __name__ == "__main__":
     from configuration import *
-else:
-    SOCKET_ADDRESS = '/tmp/dnstap'
-    REDIS_SERVER = 'localhost'
-    USE_DNSPYTHON = False
-    LOG_LEVEL = None
-    TTL_GRACE = None
-    DNS_STATS = None
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
@@ -392,7 +391,7 @@ def main(Consumer=DnsTap):
     main_args = (
             SOCKET_ADDRESS,
             statistics,
-            IGNORE,
+            IGNORE_DNS,
             Consumer
         )
     
