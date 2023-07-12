@@ -61,5 +61,14 @@
          GitHub: <a href="https://github.com/m3047/shodohflo">https://github.com/m3047/shodohflo</a>
       </p>
     </div>
+{% if debug%}
+    <div class="debug">
+        <pre>
+            {% for row in debug %}
+                {{ row }}
+            {% endfor %}
+        </pre>
+    </div>
+{% endif %}
   </body>
 </html>

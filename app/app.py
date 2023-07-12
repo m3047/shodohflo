@@ -218,7 +218,7 @@ def build_options(prefix, clients, selected):
             for address in sorted(addresses, key=lambda x: int(x))
            ]
 
-def render_chains(origin_type, data, target, render_chain):
+def render_chains(origin_type, data, target, render_chain, debug=None):
     """Render all chains.
     
     data is a list of items from the redis_data.Artifact factory (ClientArtifacts).
@@ -232,6 +232,8 @@ def render_chains(origin_type, data, target, render_chain):
         if target is None or artifact.client_address in target:
             artifact.update_origins(origin_type, all_origins)
         artifact.update_mappings(origin_type, all_mappings)
+        
+    debug += [ all_origins[k] for k in ('10.0.0.220', '10.0.0.253') if k in all_origins]
         
     # Normalize mappings. In case something is mapped by both the target and something
     # in the prefix, the target takes preference. After this there is AT MOST one of
@@ -258,6 +260,8 @@ def render_chains(origin_type, data, target, render_chain):
         if depth >= TOO_DEEP:
             depth = TOO_DEEP - 1
         by_depth[depth].append(chain)
+    
+    #debug += [ '{}: {}'.format(link.artifact, link.metadata) for link in by_depth[1][:3] ]
         
     for i in range(TOO_DEEP):
         if origin_type == 'address':
@@ -331,7 +335,8 @@ def graph(origin):
     if not RKVDNS:
         if request.args.get('clear',False):
             clear_client_data(r, target, all_clients)
-            
+    
+    debug = []
     all = request.args.get('all', '')
     if all or filter == '--all--':
         data = get_client_data(r, all_clients, prefix)
@@ -342,7 +347,8 @@ def graph(origin):
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),
                     all=all,
-                    table=render_chains(origin, data, target, render_chain),
+                    table=render_chains(origin, data, target, render_chain, debug),
+                    debug=debug,
                     message=message,
                     template=template,
                     readonly=(RKVDNS is not None))
