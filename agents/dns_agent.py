@@ -286,9 +286,10 @@ class DnsTap(Consumer):
         redis = self.redis
 
         if response.rcode() == rcode.NXDOMAIN:
-            if question is None:
-                question = response.question[0].name.to_text().lower()
-            redis.submit(redis.nx_to_redis, client_address, question)
+            if response.question[0].rdtype in self.ADDRESS_RECORDS:
+                if question is None:
+                    question = response.question[0].name.to_text().lower()
+                redis.submit(redis.nx_to_redis, client_address, question)
         elif response.rcode() == rcode.NOERROR:
             redis.submit(redis.answer_to_redis, client_address, response.answer)
         
