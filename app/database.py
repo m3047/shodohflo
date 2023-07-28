@@ -201,6 +201,9 @@ class DNSArtifact(ListArtifact):
         new.onames = onames_type(self.onames)
         new.metadata = { t:self.metadata_for(t) for t in self.METADATA_TYPES }
         return new
+    
+    def __str__(self):
+        return '{}[{}]: {} -> {}'.format(type(self).__name__, self.client_address, self.onames, self.remote_address)
 
 class CNAMEArtifact(ListArtifact):
     """A CNAME artifact."""
@@ -266,6 +269,9 @@ class CNAMEArtifact(ListArtifact):
         new.metadata = { t:self.metadata_for(t) for t in self.METADATA_TYPES }
         return new
     
+    def __str__(self):
+        return '{}[{}]: {} -> {}'.format(type(self).__name__, self.client_address, self.onames, self.rname)
+
 class NXDOMAINArtifact(CounterArtifact):
     """An FQDN for which DNS resolution failed."""
 
@@ -337,7 +343,10 @@ class NXDOMAINArtifact(CounterArtifact):
         new.count = self.count
         new.metadata = { t:self.metadata_for(t) for t in self.METADATA_TYPES }
         return new
-    
+
+    def __str__(self):
+        return '{}[{}]: {}'.format(type(self).__name__, self.client_address, self.oname)
+
 class NetflowArtifact(CounterArtifact):
     """A Packet Capture artifact."""
 
@@ -424,8 +433,7 @@ class ReconArtifact(NetflowArtifact):
         new.METADATA_TYPES = self.REVERSED_METADATA_TYPES
         new.metadata = { t:new.metadata_for(t) for t in self.REVERSED_METADATA_TYPES }
         return new
-        
-
+    
 class RSTArtifact(ReconArtifact):
     """TCP RST artifact.
     

@@ -19,7 +19,6 @@ This is a readonly RKVDNS connector. Pass an instance of RKVDNSConnection
 whenever you see r_client as a parameter.
 """
 
-import sys
 from time import time
 import concurrent.futures
 
@@ -35,9 +34,16 @@ ESCAPED = { c for c in '.;' }
 
 ARTIFACT_BUCKET_SIZE = 20       # Number of artifacts to lookup in a thread.
 
-def escape(qname):
+# These control how much data about peers and ports we're willing to munge.
+FLOW_LIMIT =  10
+PEER_LIMIT = 200
+
+COUNTER_ARTIFACTS = { 'nx', 'peer', 'flow', 'icmp', 'rst' }
+LIST_ARTIFACTS = { 'dns', 'cname' }
+
+def escape(qname, escaped=ESCAPED):
     """Escape . and ;"""
-    for c in ESCAPED:
+    for c in escaped:
         qname = qname.replace(c, '\\{}'.format(c))
     return qname
 
@@ -82,6 +88,64 @@ def read_rkvdns(server, pool, k, is_list=False):
         result = None
     return result
 
+def read_keys( server, pool, client, origin, is_target ):
+    """Read the keys for the client.
+    
+    If number of peers exceeds PEER_LIMIT it will be truncated and returned as "(many)"; no
+    flows will be returned.
+    
+    If number of flows (ports) exceeds FLOW_LIMIT they will be truncated and returned as "(many)".
+    """
+    
+    # Ping clients first to make sure there's a reason to look for anything else.
+    with pool:
+        if not pool.query('{}.get.{}'.format( escape('client;{}'.format(client)), server ), rdtype.TXT).success:
+            return []
+    
+    keys = []
+    
+    for k in ('cname', 'dns'):
+        keys += read_rkvdns( server, pool, escape('{};*;{}'.format(client,k)) + '.keys', is_list=True)
+    
+    if origin == 'fqdn':
+        keys += read_rkvdns( server, pool, escape('{};*;nx'.format(client)) + '.keys', is_list=True)
+        return keys
+    
+    # origin == 'address'
+    
+    for k in ('rst', 'icmp'):
+        keys += read_rkvdns( server, pool, escape('{};*;{}'.format(client,k)) + '.keys', is_list=True)
+    
+    # We are going to read peers and flows, but only if the number is small.
+    with pool:
+        if pool.query('{}.klen.{}'.format(escape('{};*;peer'.format(client)), server), rdtype.TXT).success:
+            n_peers = int(pool.result[0].strings[0])
+        else:
+            return keys
+    
+    if n_peers > PEER_LIMIT:
+        return keys + [ '{};(many);peer'.format(client) ]
+    
+    # Accumulate ports, up to the limit. If there are too many ports, fall back to
+    # returning peers.
+    flows = []
+    peers = read_rkvdns( server, pool, escape('{};*;peer'.format(client)) + '.keys', is_list=True)
+    for peer in peers:
+        flows += read_rkvdns( server, pool,
+                              escape( '{};{};*;flow'.format(client, peer.split(';')[1]) ) + '.keys',
+                              is_list=True)
+        if len(flows) > FLOW_LIMIT:
+            break
+    if len(flows) > FLOW_LIMIT:
+        keys += [ 
+            '{};{};(many);flow'.format( client, peer.split(';')[1] )
+            for peer in peers
+        ]
+    else:
+        keys += flows
+        
+    return keys
+
 def read_artifacts(pool, server, artifacts):
     """Reads info about the artifacts from the server."""
     results = [ ]
@@ -123,6 +187,10 @@ def get_all_clients(r_client):
 
 class ArtifactDict(dict):
     def add(self, k, is_list, v):
+        """Add / deduplicate an artifact.
+        
+        (k, is_list, v) is the tuple returned from read_artifacts().
+        """
         if is_list:
             if k not in self:
                 self[k] = set()
@@ -133,36 +201,73 @@ class ArtifactDict(dict):
             self[k] += v
         return
 
-def get_client_data(r_client, all_clients, network):
+def get_client_data(r_client, all_clients, targets, prefix, origin):
     """Get all data for all (active) clients in the network.
     
     Returns a list of instances of subclasses of ClientArtifact.
     
-    Unlike the direct Redis impementation, in this implementation the Artifacts
-    are kept in a dictionary and counts are aggregated across potentially
-    multiple RKVDNS instances before being baked.
+    Unlike the direct Redis implementation, in this implementation 
+    counts are aggregated across potentially multiple RKVDNS instances
+    before being baked.
+    
+    The naive (direct-to-redis) approach is to simply read all artifact types for
+    all clients in the network. We do want to be a little more efficient here because
+    of architectural limits and prebaked efficiencies in DNS.
+    
+    We always read:
+    
+    * dns
+    * cname
+    
+    We only read the following for origin "fqdn":
+    
+    * nx
+    
+    We only read the following for origin "address" and the specific targets:
+    
+    * rst
+    * icmp
+    * peer
+    * flow
+    
+    Furthermore, we only read "flow" if the number of flows is <= 10.
     """
-    if network is None:
-        return []
-
     artifact_jobs = []
+    artifact_data = ArtifactDict()
     #t = time()
     for client in all_clients:
-        if client not in network:
+        if client not in prefix:
             continue
-        for server,result in r_client.fanout.map( read_rkvdns, r_client.pool, '{}.keys'.format(escape('{};*'.format(str(client)))), is_list=True
+        for server,results in r_client.fanout.map( read_keys, r_client.pool, str(client), origin, is_target=(client in targets)
                             ).items():
-            while result:
-                if len(result) <= ARTIFACT_BUCKET_SIZE:
-                    artifacts = tuple(result)
-                    result.clear()
-                else:
-                    artifacts = tuple( result.pop() for i in range(ARTIFACT_BUCKET_SIZE) )
+
+            artifacts = set()
+            while results:
+                # Things which are CounterArtifacts just need to be dummied up, we don't need the
+                # actual counts.
+                result = results.pop()
+                artifact_type = result.split(';')[-1]
+
+                if artifact_type in COUNTER_ARTIFACTS:
+                    # Convert peers to flows.
+                    if artifact_type == 'peer':
+                        client, peer, ignore = result.split(';')
+                        result = '{};{};(many);flow'.format(client, peer)
+                    
+                    artifact_data.add( result, False, 1 )
+                    continue
+                
+                artifacts.add( result )
+                if len(artifacts) >= ARTIFACT_BUCKET_SIZE:
+                    artifact_jobs.append( (server, artifacts) )
+                    artifacts = set()
+                
+            if artifacts:
                 artifact_jobs.append( (server, artifacts) )
 
     #print( time() - t )
     #t = time()
-    artifact_data = ArtifactDict()
+    #artifact_data = ArtifactDict()
     with concurrent.futures.ThreadPoolExecutor() as executor:
         threads = set()
         for job in artifact_jobs:

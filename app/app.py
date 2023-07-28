@@ -233,7 +233,7 @@ def render_chains(origin_type, data, target, render_chain, debug=None):
             artifact.update_origins(origin_type, all_origins)
         artifact.update_mappings(origin_type, all_mappings)
         
-    debug += [ all_origins[k] for k in ('10.0.0.220', '10.0.0.253') if k in all_origins]
+    #debug += [ all_origins[k] for k in ('10.0.0.220', '10.0.0.253') if k in all_origins]
         
     # Normalize mappings. In case something is mapped by both the target and something
     # in the prefix, the target takes preference. After this there is AT MOST one of
@@ -318,7 +318,7 @@ def graph(origin):
     try:
         filter = request.args.get('filter','--all--')
         if filter == '--all--':
-            target = None
+            target = prefix
         else:
             target = ipaddress.ip_network(filter)
     except ValueError:
@@ -338,11 +338,11 @@ def graph(origin):
     
     debug = []
     all = request.args.get('all', '')
-    if all or filter == '--all--':
-        data = get_client_data(r, all_clients, prefix)
+    if all:
+        data = get_client_data(r, all_clients, target, prefix, origin)
     else:
-        data = get_client_data(r, all_clients, target)
-            
+        data = get_client_data(r, all_clients, target, target, origin)
+    
     return render_template(template + '.html',
                     origin=origin, prefix=(prefix and str(prefix) or ''),
                     filter_options=build_options(prefix, all_clients, filter),

@@ -48,7 +48,7 @@ def Artifact(r_client, k, types=None):
     
     return ARTIFACT_MAPPER[artifact_type](k, v)
 
-def get_client_data(r_client, all_clients, network):
+def get_client_data(r_client, all_clients, targets, prefix, origin):
     """Get all data for all (active) clients in the network.
     
     Returns a list of instances of subclasses of ClientArtifact.
@@ -58,13 +58,12 @@ def get_client_data(r_client, all_clients, network):
     exist in the network even if the client which made the requests hasn't been
     seen. Such records are invisible until the client which made the request(s)
     is seen again.
+    
+    targets and origin are ignored in the direct-to-redis implementation.
     """
-    if network is None:
-        return []
-
     all_artifacts = []
     for client in all_clients:
-        if client not in network:
+        if client not in prefix:
             continue
         for k in r_client.keys('{};*'.format(str(client))):
             artifact = Artifact(r_client, k)
