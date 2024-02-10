@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2024 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -262,11 +262,21 @@ class JSONMapper(object):
         return True
     
     def map_fields(self, packet):
-        """Maps all of the fields to their values."""
+        """Maps all of the fields to their values. (generator function)
+        
+        The default implementation returns a single value, but being a genfunc
+        allows this to be expanded to cases where multiple records are generated
+        by a single input record.
+        """
         data = {}
         for field in self.FIELDS:
             field(data, self, packet)
-        return data
+        # Omit any values which are None.
+        for k,v in tuple(data.items()):
+            if v is None:
+                del data[k]
+        yield data
+        return
 
 class UniversalWriter(object):
     """Plastering over the differences between file descriptors and network sockets."""
@@ -387,11 +397,11 @@ class DnsTap(Consumer):
                 timer.stop()
             return True
 
-        data = self.mapper.map_fields(message)
-        # Actually queues a separate coroutine.
-        self.writer.write( json.dumps(data) + "\n",
-                           STATS and self.backlog.start_timer() or None
-                    )
+        for data in self.mapper.map_fields(message):
+            # Actually queues a separate coroutine.
+            self.writer.write( json.dumps(data) + "\n",
+                            STATS and self.backlog.start_timer() or None
+                        )
         if STATS:
             timer.stop()
         return True
