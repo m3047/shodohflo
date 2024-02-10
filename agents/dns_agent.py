@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2024 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,21 +15,15 @@
 
 """DNS Agent.
 
-This script takes no arguments.
+Command Line:
+
+    dns_agent.py <listening-address>:<listening-port>
+    
+The agent listens on listening-address:listening-port for (line oriented) JSON
+formatted UDP datagrams containing the fields documented in dnstap_agent.py.
 
 REQUIRES PYTHON 3.6 OR BETTER
 
-Uses Dnstap to capture A and AAAA responses to specific addresses and send
-them to Redis. By default only Client Response type messages are processed
-and you'll get better performance if you configure your DNS server to only
-send such messages. The expected specification for BIND in named.conf is:
-
-    dnstap { client response; };
-    dnstap-output unix "/tmp/dnstap";
-
-If you don't restrict the message type to client responses, a warning message
-will be printed for every new connection established.
-        
 Keys written to Redis:
 
     client;<client-address> -> counter (TTL_GRACE)
@@ -50,6 +44,7 @@ set to a print function which accepts a string, for example:
     PRINT_THIS = logging.debug
     PRINT_THAT = print
 """
+import sysconfig
 
 import sys
 from os import path
@@ -63,19 +58,21 @@ from redis.exceptions import ConnectionError
 import dns.rdatatype as rdatatype
 import dns.rcode as rcode
 
+from json import loads
+from ipaddress import ip_address
+
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
-from shodohflo.fstrm import Consumer, Server, AsyncUnixSocket, PYTHON_IS_311
-import shodohflo.protobuf.dnstap as dnstap
 from shodohflo.redis_handler import RedisBaseHandler
 from shodohflo.statistics import StatisticsFactory
+
+PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
 
 if PYTHON_IS_311:
     from asyncio import CancelledError
 else:
     from concurrent.futures import CancelledError
 
-SOCKET_ADDRESS = '/tmp/dnstap'
 REDIS_SERVER = 'localhost'
 USE_DNSPYTHON = False
 LOG_LEVEL = None
@@ -88,8 +85,6 @@ if __name__ == "__main__":
 
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
-
-CONTENT_TYPE = 'protobuf:dnstap.Dnstap'
 
 if TTL_GRACE is None:
     TTL_GRACE = 900         # 15 minutes
@@ -106,20 +101,43 @@ PRINT_COROUTINE_ENTRY_EXIT = None
 # Similar to the foregoing, but always set to something valid.
 STATISTICS_PRINTER = logging.info
 
-def hexify(data):
-    return ''.join(('{:02x} '.format(b) for b in data))
+def lart(msg=''):
+    if msg:
+        msg += '\n\n'
+    print('{}dnstap2json <unix-socket> {{udp-address:udp-port}}'.format(msg), file=sys.stderr)
+    sys.exit(1)
 
+class DictOfCounters(dict):
+    def inc(self, k):
+        """Return the postincrement value."""
+        if k not in self:
+            self[k] = 0
+        self[k] += 1
+        return self[k]
+    
+    def put(self, k, v):
+        self[k] = v
+        return
+
+    def expected(self, k, v):
+        if k not in self:
+            return False
+        self[k] += 1
+        return self[k] == v
+    
 class RedisHandler(RedisBaseHandler):
     """Handles calls to Redis so that they can be run in a different thread."""
 
-    ADDRESS_RECORDS = { rdatatype.A, rdatatype.AAAA }
+    ADDRESS_RECORDS = { 'A', 'AAAA' }
     
     def __init__(self, event_loop, ttl_grace, statistics):
         RedisBaseHandler.__init__(self, event_loop, ttl_grace)
-        if DNS_STATS:
+        if statistics:
             self.answer_to_redis_stats = statistics.Collector("answer_to_redis")
             self.nx_to_redis_stats = statistics.Collector("nx_to_redis")
             self.backlog = statistics.Collector("redis_backlog")
+        else:
+            self.answer_to_redis_stats = self.nx_to_redis_stats = self.backlog = None
         return
     
     def redis_server(self):
@@ -129,17 +147,14 @@ class RedisHandler(RedisBaseHandler):
             server = REDIS_SERVER
         return server
     
-    def a_to_redis(self, client_address, name, ttl, address ):
+    def a_to_redis(self, client_address, name, address ):
         """Called internally by rrset_to_redis()."""
         k = '{};{};dns'.format(client_address, address)
-        ttl += TTL_GRACE
         name = ';{};'.format(name)
         names = self.redis.get(k) or ''
         if name not in names:
             self.redis.append(k, name)
-        old_ttl = self.redis.ttl(k)
-        if old_ttl is None or old_ttl < ttl:
-            self.redis.expire(k, ttl)
+        self.redis.expire(k, TTL_GRACE)
         return
     
     def cname_to_redis(self, client_address, oname, rname):
@@ -155,15 +170,14 @@ class RedisHandler(RedisBaseHandler):
     def answer_to_redis_(self, client_address, answer):
         """Address and CNAME records to redis - core logic."""
         self.client_to_redis(client_address)
-        for rrset in answer:
-            name = rrset.name.to_text().lower().replace('\\;',';')
-            if rrset.rdtype in self.ADDRESS_RECORDS:
-                ttl = rrset.ttl
-                for rr in rrset:
-                    self.a_to_redis(client_address, name, ttl, rr.to_text().lower())
+        address = answer.pop()
+        for i in range(len(answer)):
+            name = answer[i]
+            if i == len(answer)-1:
+                self.a_to_redis(client_address, name, address)
                 continue
-            if rrset.rdtype == rdatatype.CNAME:
-                self.cname_to_redis(client_address, name, rrset[0].to_text().lower())
+            else:
+                self.cname_to_redis(client_address, name, answer[i+1])
                 continue
         return
 
@@ -228,10 +242,12 @@ class RedisHandler(RedisBaseHandler):
         RedisBaseHandler.submit(self, func, *args)
         return
     
-class DnsTap(Consumer):
+class Consumer(asyncio.DatagramProtocol):
     
-    def __init__(self, event_loop, statistics, ignore=None, message_type=dnstap.Message.TYPE_CLIENT_RESPONSE):
-        """Dnstap consumer.
+    ACCEPTED_STATUS = set(( 'NOERROR', 'NXDOMAIN' ))
+    
+    def initialize(self, event_loop, statistics, ignore=None):
+        """Telemetry consumer.
 
         Parameters:
 
@@ -240,89 +256,120 @@ class DnsTap(Consumer):
                           This is done downstream of process_message(), which means that
                           all messages are available there; you can choose to implement
                           this for your use case or not.
-            message_type: This agent is intended to consume client response
-                          messages. You can have it process all messages by
-                          setting this to None, but then you'll get potentially
-                          strange client addresses logged to Redis.
         """
+        self.event_loop = event_loop
         self.redis = RedisHandler(event_loop, TTL_GRACE, statistics)
-        self.message_type = message_type
         self.ignore = ignore
-        if DNS_STATS:
+        self.requests = set()
+        self.last_id = DictOfCounters()
+        if statistics:
             self.consume_stats = statistics.Collector("consume")
+            self.datagram_stats = statistics.Collector('datagram')
+        else:
+            self.consume_stats = self.datagram_stats = None
+            
         return
 
-    def accepted(self, data_type):
-        logging.info('Accepting: {}'.format(data_type))
-        if data_type != CONTENT_TYPE:
-            logging.warn('Unexpected content type "{}", continuing...'.format(data_type))
-        # NOTE: This isn't technically correct in the async case, since DnsTap context is
-        # the same for all connections. However, we're only ever expecting one connection
-        # at a time and this is intended to provide a friendly hint to the user about their
-        # nameserver configuration, so the impact of the race condition is minor.
-        self.performance_hint = True
-        return True
-    
     def post_to_redis(self, message):
         """Analyze and post to the ShoDoHFlo redis database."""
         
-        if self.message_type and message.field('type')[1] != self.message_type:
-            if self.performance_hint:
-                logging.warn('PERFORMANCE HINT: Change your Dnstap config to restrict it to client response only.')
-                self.performance_hint = False
-            return
-        # NOTE: Do these lookups AFTER verifying that we have the correct message type!
-        response = message.field('response_message')[1]
-        client_address = message.field('query_address')[1]
-        
-        question = None
+        client_address = str(message['client'])
+        question = message['chain'][0]
 
         if self.ignore is not None:
-            question = response.question[0].name.to_text().lower()
             for s in self.ignore:
                 if s in question:
                     return
 
         redis = self.redis
 
-        if response.rcode() == rcode.NXDOMAIN:
-            if response.question[0].rdtype in redis.ADDRESS_RECORDS:
-                if question is None:
-                    question = response.question[0].name.to_text().lower()
-                redis.submit(redis.nx_to_redis, client_address, question)
-        elif response.rcode() == rcode.NOERROR:
-            redis.submit(redis.answer_to_redis, client_address, response.answer)
+        if message['status'] == 'NXDOMAIN':
+            redis.submit(redis.nx_to_redis, client_address, question)
+        else:
+            redis.submit(redis.answer_to_redis, client_address, message['chain'])
         
         return
     
-    def process_message(self, message):
+    def process_message(self, message, peer_address):
         """This can be subclassed to add/remove message processing.
         
         Arguments:
             message: DNS wire format message.
+            
+        Before calling post_to_redis() message is loaded into a Python dictionary from
+        wire format. The following fields must be present and valid:
+        
+        * id
+        * chain
+        * address (if status is NOERROR)
+        * client
+        * status
+        * qtype
+        
+        The id is checked to see if it is monotonically increasing for the peer address.
+        
+        Status which is not either NOERROR or NXDOMAIN (present in ACCEPTED_STATUS) is
+        ignored.
         """
+        try:
+            message = loads(message)
+            print(message)
+            field = 'id'
+            if not self.last_id.expected( peer_address, message[field]):
+                if peer_address in self.last_id:
+                    logging.info('sequence ({}): {} -> {}'.format( peer_address, self.last_id[peer_address]-1, message[field] ))
+                self.last_id.put( peer_address, message[field] )
+            field = 'chain'
+            chain = message[field]
+            for i in range(len(chain)):
+                fqdn = chain[i]
+                if fqdn[-1] != '.':
+                    raise TypeError('"{}" does not look like an FQDN')
+                chain[i] = fqdn.lower()
+            chain.reverse()
+            field = 'address'
+            if 'address' in message:
+                message[field] = ip_address(message[field])
+                chain.append(str(message[field]))
+            field = 'client'
+            message[field] = str(ip_address(message[field]))
+            field = 'status'
+            if message[field] not in self.ACCEPTED_STATUS:
+                logging.info('{} from {}'.format( message[field], peer_address ))
+                return
+            field = 'qtype'
+            if message[field] not in self.redis.ADDRESS_RECORDS:
+                logging.info('{} from {}'.format( message[field], peer_address ))
+                return
+        except Exception as e:
+            logging.warning('{} from {} while processing {}'.format(type(e).__name__, peer_address, field))
+            return
+
         self.post_to_redis(message)
         return
 
-    def consume(self, frame):
-        """Consume Dnstap data.
-        
-        By default the type is restricted to dnstap.Message.TYPE_CLIENT_RESPONSE.
-        """
-        # NOTE: This function is called in coroutine context, but is not the coroutine itself.
-        # Enable PRINT_COROUTINE_ENTRY_EXIT in shodohflo.fstrm if needed.
-        if DNS_STATS:
+    async def handle_datagram(self, datagram, peer_address, datagram_timer, promise):
+        """Consume JSON data."""
+        if self.consume_stats is not None:
             timer = self.consume_stats.start_timer()
 
-        message = dnstap.Dnstap(frame).field('message')[1]
-        self.process_message(message)
+        self.process_message(datagram, peer_address)
 
-        if DNS_STATS:
+        if self.consume_stats is not None:
             timer.stop()
-        return True
+            datagram_timer.stop()
+        self.requests.remove(promise[0])
+        return
     
-    def finished(self, partial_frame):
-        logging.warn('Finished. Partial data: "{}"'.format(hexify(partial_frame)))
+    def datagram_received(self, datagram, peer):
+        promise = []
+        task = self.event_loop.create_task(
+                    self.handle_datagram( datagram, peer[0],
+                                          self.datagram_stats is not None and self.datagram_stats.start_timer() or None,
+                                          promise
+            )                           )
+        promise.append(task)
+        self.requests.add(task)
         return
 
 async def statistics_report(statistics):
@@ -347,62 +394,57 @@ async def close_tasks(tasks):
         pass
     return
 
-def main_36(socket_address, statistics, ignore, Consumer_class):
-    event_loop = asyncio.get_event_loop()
-    if statistics is not None:
-        stats_routine = event_loop.create_task(statistics_report(statistics))
+def main(address, port):
+    logging.info('DNS Agent starting. Listening: {}:{}  Redis: {}'.format(address, port, REDIS_SERVER))
+    
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop( event_loop )
 
+    statistics = DNS_STATS and StatisticsFactory() or None
+    
     try:
-        event_loop.run_until_complete(
-            Server( AsyncUnixSocket(socket_address),
-                    Consumer_class(event_loop, statistics, ignore),
-                    event_loop
-                ).listen_asyncio()
-            )
+        listener = event_loop.create_datagram_endpoint( Consumer, local_addr=(address, int(port) ))
+        transport,consumer = event_loop.run_until_complete(listener)
+        consumer.initialize( event_loop, statistics, IGNORE_DNS )
+    except PermissionError:
+        lart('Permission Denied! (are you root? is the port free?)')
+        sys.exit(1)
+    except OSError as e:
+        lart('{} (did you supply an interface address?)'.format(e))
+        sys.exit(1)
+    except Exception as e:
+        lart('{}'.format(e))
+    
+    try:
+        event_loop.run_forever()
     except KeyboardInterrupt:
         pass
 
-    event_loop.run_until_complete(
-            close_tasks(asyncio.Task.all_tasks(event_loop))
-        )
+    transport.close()
+
+    if PYTHON_IS_311:
+        tasks = asyncio.all_tasks(event_loop)
+    else:
+        tasks = asyncio.Task.all_tasks(event_loop)
+
+    if tasks:
+        event_loop.run_until_complete(close_tasks(tasks))
+
     event_loop.close()
 
     return
 
-async def main_311(socket_address, statistics, ignore, Consumer_class):
-    event_loop = asyncio.get_running_loop()
-    if statistics is not None:
-        stats_routine = event_loop.create_task( statistics_report(statistics) )
-    
-    try:
-        await Server(
-                AsyncUnixSocket(socket_address),
-                Consumer_class(event_loop, statistics, ignore),
-                event_loop
-            ).listen_asyncio()
-    except CancelledError:
-        pass
-    
-    return
-
-def main(Consumer=DnsTap):
-    logging.info('DNS Agent starting. Socket: {}  Redis: {}'.format(SOCKET_ADDRESS, REDIS_SERVER))
-    statistics = DNS_STATS and StatisticsFactory() or None
-
-    main_args = (
-            SOCKET_ADDRESS,
-            statistics,
-            IGNORE_DNS,
-            Consumer
-        )
-    
-    if PYTHON_IS_311:
-        asyncio.run(main_311(*main_args))
-    else:
-        main_36(*main_args)
-    
-    return
-
 if __name__ == '__main__':
-    main()
+    argv = sys.argv.copy()
     
+    if   len(argv) < 2:
+        lart("address:port needed")
+    elif len(argv) > 3:
+        lart("unrecognized argument(s)")
+        
+    address_and_port = argv[1].split(':')
+    if len(address_and_port) != 2:
+        lart("improper address:port")
+    address, port = address_and_port
+    
+    main(address,port)
