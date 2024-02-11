@@ -132,7 +132,10 @@ class MyMapper(JSONMapper):
     def filter(self, packet):
         if not JSONMapper.filter(self, packet):
             return False
-        if not len(packet.field('response_message')[1].answer):
+        message = packet.field('response_message')[1]
+        if not len(message.answer):
+            return False
+        if message.question[0].rdtype not in tuple( rset.rdtype for rset in message.answer ):
             return False
         return True
     
@@ -160,6 +163,7 @@ class MyMapper(JSONMapper):
                     ignore = ip_address(addr)
             except:
                 logging.info('Invalid address "{}" ({}) {} {}'.format(addr, data['qtype'], chain, addresses))
+                return
         else:
             addresses = None
         chain.reverse()
