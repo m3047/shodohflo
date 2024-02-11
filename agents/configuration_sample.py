@@ -51,3 +51,38 @@ IGNORE_FLOW = None
 # care to see it. We also have a web server which receives telemetry updates which
 # we don't care to see.
 # IGNORE_FLOW = { ('10.0.11.23', 53), ('10.0.11.42', 443) }
+
+# The DNS Agent has been split into two agents with telemetry:
+#
+# * The Dnstap Agent listens to the unix socket and sends UDP datagrams.
+# * The DNS Agent listens for UDP datagrams.
+#
+# Both unicast and multicast datagrams are supported. Both agents allow the rudimentary
+# parameters to create unicast telemetry to be specified on the command line. More
+# advanced use cases can be addressed by setting parameters here.
+#
+# Use the command line arguments.
+DNS_CHANNEL = None
+# Unicast datagrams are sent to (unicast) address 10.0.1.253, port 3053.
+# DNS_CHANNEL = dict(recipient='10.0.1.253', port=3053)
+# Assuming that 10.0.3.55 is bound to the eth1 network interface on the sender and
+# 10.0.4.76 is bound to eth0 on the receiving system, the following will
+# result in datagrams addressed to group 233.252.0.229, port 3053. The interface
+# on which the datagram is to be sent/received needs to be specified. The sender
+# specifies send_interface and the recipient specifies recv_interface.
+# Both the sender and receiver read this (same) configuration file, so both should be
+# specified here... presuming you're running both the Dnstap and DNS agents on the
+# same host. (NOTE: If you are running both agents on the same host then the interface
+# address is likely the same for both.)
+# DNS_CHANNEL = dict(
+#        recipient='233.252.0.229', port=3053,
+#        send_interface='10.0.3.55', recv_interface='10.0.4.76'
+#    )
+
+# The following apply only to multicast. Defaults are shown.
+# Controls whether or not the datagrams loop back to the sender (on the same interface).
+# DNS_MULTICAST_LOOPBACK = 1
+# Sets the internet protocol packet TTL, kind of like a "transmit range". 1 is the
+# most limited. TTL is decremented at each packet routing step.
+# DNS_MULTICAST_TTL = 1
+

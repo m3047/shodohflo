@@ -20,7 +20,7 @@ REQUIRES PYTHON 3.6 OR BETTER
 Command Line:
 ------------
 
-    dnstap_agent.py <unix-socket> {<dest-host>:port}
+    dnstap_agent.py <unix-socket> {<dest-host>:<port>} {interface-address}
     
 (Line oriented) JSON is written with each line terminated with '\\n'.
 
@@ -31,9 +31,13 @@ Arguments:
     <dest-host> and <port> are optional (although if supplied both are required)
         and specify the receiving end of the stream of UDP packets. If not supplied,
         the JSON is written to stdout.
+    <interface-address> is required if <dest-host> is a multicast address, and is
+        the (system-) bound address for the interface to be used to send the datagram.
 
-Uses Dnstap to capture A and AAAA responses to specific addresses and send
-them to Redis. By default only Client Response type messages are processed
+NOTE: The configuration.py file overrides parameters.
+    
+Uses Dnstap to capture A and AAAA responses to specific addresses and generate
+telemetry. By default only Client Response type messages are processed
 and you'll get better performance if you configure your DNS server to only
 send such messages. The expected specification for BIND in named.conf is:
 
@@ -71,16 +75,23 @@ import sys
 from os import path
 import logging
 
+from ipaddress import ip_address
+
 import dns.rdatatype as rdatatype
 import dns.rcode as rcode
 
 import dnstap2json
 from dnstap2json import main, JSONMapper, FieldMapping
 
+SOCKET_ADDRESS = '/tmp/dnstap'
 LOG_LEVEL = None
 DNSTAP_STATS = None
 #PRINT_COROUTINE_ENTRY_EXIT = None
-PRINT_COROUTINE_ENTRY_EXIT = print
+PRINT_COROUTINE_ENTRY_EXIT = None
+
+DNS_CHANNEL = None
+DNS_MULTICAST_LOOPBACK = None
+DNS_MULTICAST_TTL = None
 
 if __name__ == "__main__":
     from configuration import *
@@ -90,6 +101,10 @@ if LOG_LEVEL is not None:
 
 dnstap2json.STATS = DNSTAP_STATS
 dnstap2json.PRINT_COROUTINE_ENTRY_EXIT = PRINT_COROUTINE_ENTRY_EXIT
+if DNS_MULTICAST_LOOPBACK:
+    dnstap2json.MULTICAST_LOOPBACK = DNS_MULTICAST_LOOPBACK
+if DNS_MULTICAST_TTL:
+    dnstap2json.MULTICAST_TTL = DNS_MULTICAST_TTL
 
 class MyMapper(JSONMapper):
 
@@ -142,6 +157,7 @@ class MyMapper(JSONMapper):
             yield data
             return
         
+        # Otherwise, we generate one event per final address.
         for address in addresses:
             data['address'] = address
             yield data
@@ -149,4 +165,11 @@ class MyMapper(JSONMapper):
         return
     
 if __name__ == '__main__':
-    main(MyMapper)
+    recipient = port = interface = None
+
+    if DNS_CHANNEL:
+        recipient = DNS_CHANNEL.get('recipient', None)
+        port = DNS_CHANNEL.get('port', None)
+        interface = DNS_CHANNEL.get('send_interface', None)
+        
+    main(MyMapper, SOCKET_ADDRESS, recipient, port, interface)

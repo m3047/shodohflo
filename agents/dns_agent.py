@@ -17,7 +17,7 @@
 
 Command Line:
 
-    dns_agent.py <listening-address>:<listening-port>
+    dns_agent.py <listening-address>:<listening-port> {<multicast-interface>}
     
 The agent listens on listening-address:listening-port for (line oriented) JSON
 formatted UDP datagrams containing the fields documented in dnstap_agent.py.
@@ -52,19 +52,21 @@ import logging
 import traceback
 
 import asyncio
+import socket
+from ipaddress import ip_address
+
 import redis
 from redis.exceptions import ConnectionError
 
-import dns.rdatatype as rdatatype
-import dns.rcode as rcode
-
 from json import loads
-from ipaddress import ip_address
 
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
 from shodohflo.redis_handler import RedisBaseHandler
 from shodohflo.statistics import StatisticsFactory
+
+import struct
+import shodohflo.mcast_structs as structs
 
 PYTHON_IS_311 = int( sysconfig.get_python_version().split('.')[1] ) >= 11
 
@@ -73,6 +75,7 @@ if PYTHON_IS_311:
 else:
     from concurrent.futures import CancelledError
 
+DNS_CHANNEL = None
 REDIS_SERVER = 'localhost'
 USE_DNSPYTHON = False
 LOG_LEVEL = None
@@ -95,16 +98,24 @@ if USE_DNSPYTHON:
     else:
         from dns.resolver import query as dns_query
 
+if DNS_CHANNEL is None:
+    DNS_CHANNEL = {}
+
 # Start/end of coroutines. You will probably also want to enable it in shodohflo.fstrm.
 PRINT_COROUTINE_ENTRY_EXIT = None
 
 # Similar to the foregoing, but always set to something valid.
 STATISTICS_PRINTER = logging.info
 
+# Used for packing addresses when setting socket options.
+BIG_ENDIAN = ( 4, 'big' )
+
+ALL_INTERFACES = ''
+
 def lart(msg=''):
     if msg:
         msg += '\n\n'
-    print('{}dnstap2json <unix-socket> {{udp-address:udp-port}}'.format(msg), file=sys.stderr)
+    print('{}dns_agent <udp-address>:<udp-port> {{<multicast-interface>}}'.format(msg), file=sys.stderr)
     sys.exit(1)
 
 class DictOfCounters(dict):
@@ -313,7 +324,6 @@ class Consumer(asyncio.DatagramProtocol):
         """
         try:
             message = loads(message)
-            print(message)
             field = 'id'
             if not self.last_id.expected( peer_address, message[field]):
                 if peer_address in self.last_id:
@@ -394,7 +404,7 @@ async def close_tasks(tasks):
         pass
     return
 
-def main(address, port):
+def main(address, port, interface=None):
     logging.info('DNS Agent starting. Listening: {}:{}  Redis: {}'.format(address, port, REDIS_SERVER))
     
     event_loop = asyncio.new_event_loop()
@@ -403,7 +413,18 @@ def main(address, port):
     statistics = DNS_STATS and StatisticsFactory() or None
     
     try:
-        listener = event_loop.create_datagram_endpoint( Consumer, local_addr=(address, int(port) ))
+        if interface:
+            sock = socket.socket( socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_NONBLOCK )
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(( ALL_INTERFACES, int(port) ))
+            multicast_interfaces = struct.pack( structs.ip_mreq.item.format,
+                                                int(ip_address(address)).to_bytes(*BIG_ENDIAN),
+                                                int(ip_address(interface)).to_bytes(*BIG_ENDIAN)
+                                              )
+            sock.setsockopt( socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, multicast_interfaces )
+            listener = event_loop.create_datagram_endpoint( Consumer, sock=sock )
+        else:
+            listener = event_loop.create_datagram_endpoint( Consumer, local_addr=(address, int(port) ))
         transport,consumer = event_loop.run_until_complete(listener)
         consumer.initialize( event_loop, statistics, IGNORE_DNS )
     except PermissionError:
@@ -437,14 +458,41 @@ def main(address, port):
 if __name__ == '__main__':
     argv = sys.argv.copy()
     
-    if   len(argv) < 2:
+    address = DNS_CHANNEL.get('recipient', None)
+    port = DNS_CHANNEL.get('port', None)
+    
+    if   len(argv) < 2 and not (address and port):
         lart("address:port needed")
     elif len(argv) > 3:
         lart("unrecognized argument(s)")
+
+    if not (address and port):
+        address_and_port = argv[1].split(':',1)
+        if len(address_and_port) != 2:
+            lart("improper address:port")
+        if not address:
+            address = address_and_port[0]
+        if not port:
+            port = address_and_port[1]
+
+    interface = DNS_CHANNEL.get('recv_interface', None)
+    if not interface and len(argv) == 3:
+        interface = argv[2]
+
+    try:
+        if ip_address(address).is_multicast:
+            if not interface:
+                lart('interface required for multicast')
+        else:
+            if interface:
+                lart('interfaced not used for unicast')
+    except Exception as e:
+        lart("{}".format(e))
         
-    address_and_port = argv[1].split(':')
-    if len(address_and_port) != 2:
-        lart("improper address:port")
-    address, port = address_and_port
-    
-    main(address,port)
+    if interface:
+        try:
+            ignore = ip_address(interface)
+        except Exception:
+            lart("Specify the interface using an address bound to it.")
+            
+    main(address,port,interface)
