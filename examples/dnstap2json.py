@@ -22,7 +22,7 @@ This program is adapted from agents/dns_agent.py.
 Command Line:
 ------------
 
-    dnstap2json.py <unix-socket> {<dest-host>:port}
+    dnstap2json.py <unix-socket> {<dest-host>:port} {interface-address}
     
 (Line oriented) JSON is written with each line terminated with '\\n'.
 
@@ -33,7 +33,9 @@ Arguments:
     <dest-host> and <port> are optional (although if supplied both are required)
         and specify the receiving end of the stream of UDP packets. If not supplied,
         the JSON is written to stdout.
-        
+    <interface-address> is required if <dest-host> is a multicast address, and is
+        the (system-) bound address for the interface to be used to send the datagram.
+
 If you send the traffic via UDP
 
     ./dnstap2json.py /tmp/dnstap 127.0.0.1:3047
@@ -84,6 +86,7 @@ import traceback
 
 import asyncio
 import socket
+from ipaddress import ip_address
 
 import json
 
@@ -96,6 +99,9 @@ from shodohflo.fstrm import Consumer, AsyncUnixSocket, PYTHON_IS_311
 from shodohflo.fstrm import Server as FstrmServer
 import shodohflo.protobuf.dnstap as dnstap
 from shodohflo.statistics import StatisticsFactory
+
+import struct
+import shodohflo.mcast_structs as structs
 
 if PYTHON_IS_311:
     from asyncio import CancelledError
@@ -115,11 +121,14 @@ STATISTICS_PRINTER = logging.info
 # Do we want stats at all? If so, set it to the number of seconds between reports.
 STATS = 60
 
+MULTICAST_LOOPBACK = 1
+MULTICAST_TTL = 1
+
 def hexify(data):
     return ''.join(('{:02x} '.format(b) for b in data))
 
 def lart():
-    print('dnstap2json <unix-socket> {udp-address:udp-port}', file=sys.stderr)
+    print('{} <unix-socket> {{<udp-address>:<udp-port> {{<multicast-interface>}}}}'.format(path.basename(sys.argv[0]).split('.')[0]), file=sys.stderr)
     sys.exit(1)
 
 class FieldMapping(object):
@@ -283,13 +292,21 @@ class UniversalWriter(object):
     
     FAKE_STDOUT_TIMEOUT = 0
     
-    def __init__(self, destination, event_loop):
+    def __init__(self, destination, interface, event_loop):
         """If destination is supplied then this is a UDP socket, otherwise STDOUT."""
         self.destination = destination
         if destination is not None:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM|socket.SOCK_NONBLOCK)
             host, port = destination.split(':',1)
-            self.sock.connect((host,int(port)))
+
+            sock = self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM|socket.SOCK_NONBLOCK)
+            
+            if ip_address(host).is_multicast:
+                sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, MULTICAST_LOOPBACK )
+                local_interface_arg = struct.pack( structs.in_addr.item.format, int(ip_address(interface)).to_bytes(4, 'big') )
+                sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_IF, local_interface_arg )
+                sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, MULTICAST_TTL )
+            
+            sock.connect((host,int(port)))
         else:
             self.fd = sys.stdout
             set_blocking(self.fd.fileno(), False)
@@ -388,6 +405,8 @@ class DnsTap(Consumer):
         """Consume Dnstap data."""
         # NOTE: This function is called in coroutine context, but is not the coroutine itself.
         # Enable PRINT_COROUTINE_ENTRY_EXIT in shodohflo.fstrm if needed.
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            print('START consume')
         if STATS:
             timer = self.consume_stats.start_timer()
 
@@ -395,6 +414,8 @@ class DnsTap(Consumer):
         if not self.mapper.filter(message):
             if STATS:
                 timer.stop()
+            if PRINT_COROUTINE_ENTRY_EXIT:
+                print('END consume')
             return True
 
         for data in self.mapper.map_fields(message):
@@ -404,6 +425,8 @@ class DnsTap(Consumer):
                         )
         if STATS:
             timer.stop()
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            print('END consume')
         return True
     
     def finished(self, partial_frame):
@@ -448,12 +471,12 @@ async def close_tasks(tasks):
         pass
     return
 
-def main_36(socket_address, destination, Mapper_Class):
+def main_36(socket_address, destination, interface, Mapper_Class):
     event_loop = asyncio.get_event_loop()
     statistics = StatisticsFactory()
     if STATS:
         stats_routine = asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
-    writer = UniversalWriter(destination, event_loop)
+    writer = UniversalWriter(destination, interface, event_loop)
 
     try:
         event_loop.run_until_complete(
@@ -472,12 +495,12 @@ def main_36(socket_address, destination, Mapper_Class):
     event_loop.close()
     return
 
-async def main_311(socket_address, destination, Mapper_Class):
+async def main_311(socket_address, destination, interface, Mapper_Class):
     event_loop = asyncio.get_running_loop()
     statistics = StatisticsFactory()
     if STATS:
         stats_routine = event_loop.create_task( statistics_report(statistics) )
-    writer = UniversalWriter(destination, event_loop)
+    writer = UniversalWriter(destination, interface, event_loop)
     
     try:
         await Server(
@@ -491,19 +514,71 @@ async def main_311(socket_address, destination, Mapper_Class):
     writer.close()
     return
 
-def main(JSONMapper_class=JSONMapper):
+def main(JSONMapper_class=JSONMapper, socket_address=None, recipient=None, port=None, interface=None):
     """Hi, thanks for reading this!
     
     You can subclass JSONMapper to alter the records which get selected as well as
     the JSON which is output.
+    
+    Parameters
+    ----------
+    
+    With the exception of JSONMapper_class, the parameters override anything specified on
+    the command line.
+    
+    socket_address: The unix socket to receive Dnstap telemetry on.
+    recipient:      The receiving address or multicast group.
+    port:           The receiving port.
+    interface:      If recipient is a multicast group then this is the address bound to the
+                    interface to send the datagram on.
     """
-    if len(sys.argv) < 2:
-        lart()
-    socket_address = sys.argv[1]
-    destination = len(sys.argv) > 2 and sys.argv[2] or None
-    logging.info('dnstap2json starting. Socket: {}  Destination: {}'.format(socket_address, destination or 'STDOUT'))
+    if not socket_address:
+        if len(sys.argv) < 2:
+            lart()
+        socket_address = sys.argv[1]
 
-    main_args = (socket_address, destination, JSONMapper_class)
+    if len(sys.argv) > 2:
+        destination = sys.argv[2]
+    else:
+        destination = None
+    if recipient and port:
+        destination = (recipient, port)
+
+    if not interface and len(sys.argv) == 4:
+        interface = sys.argv[3]
+        
+    try:
+        if destination:
+            recip_addr = ip_address(destination.split(':',1)[0])
+            if recip_addr.is_multicast:
+                if not interface:
+                    print('interface required for multicast', file=sys.stderr)
+                    lart()
+            else:
+                if interface:
+                    print('interface invalid for unicast', file=sys.stderr)
+                    lart()
+    except Exception as e:
+        print('{}\n'.format(e), file=sys.stderr)
+        lart()
+        
+    if interface:
+        try:
+            ignore = ip_address(interface)
+        except Exception:
+            print('specify interface using a bound address', file=sys.stderr)
+            lart()
+    
+    if len(sys.argv) > 4:
+        lart()
+    
+    logging.info('{} starting. Socket: {}  Destination: {}'.format(
+            path.basename(sys.argv[0]).split('.')[0], 
+            socket_address, 
+            destination or 'STDOUT'
+        )       )
+
+    main_args = (socket_address, destination, interface, JSONMapper_class)
     if PYTHON_IS_311:
         asyncio.run(main_311(*main_args))
     else:
