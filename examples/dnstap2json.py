@@ -542,7 +542,7 @@ def main(JSONMapper_class=JSONMapper, socket_address=None, recipient=None, port=
     else:
         destination = None
     if recipient and port:
-        destination = (recipient, port)
+        destination = '{}:{}'.format(recipient, port)
 
     if not interface and len(sys.argv) == 4:
         interface = sys.argv[3]
