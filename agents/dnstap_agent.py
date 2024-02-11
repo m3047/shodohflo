@@ -129,6 +129,13 @@ class MyMapper(JSONMapper):
         self.id_ += 1
         return self.id_
     
+    def filter(self, packet):
+        if not JSONMapper.filter(self, packet):
+            return False
+        if not len(packet.field('response_message')[1].answer):
+            return False
+        return True
+    
     def map_fields(self, packet):
         """Performs an explosion of the chain. (generator function)
         
@@ -146,6 +153,13 @@ class MyMapper(JSONMapper):
         chain = data['chain']
         if packet.field('response_message')[1].rcode() == rcode.NOERROR:
             addresses = chain.pop()
+            # TODO: This is paranoid integrity checking which can possibly be removed (or
+            #       improved) at some point in the future.
+            try:
+                for addr in addresses:
+                    ignore = ip_address(addr)
+            except:
+                logging.info('Invalid address "{}" ({}) {} {}'.format(addr, data['qtype'], chain, addresses))
         else:
             addresses = None
         chain.reverse()
