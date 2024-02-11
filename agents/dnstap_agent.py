@@ -158,9 +158,13 @@ class MyMapper(JSONMapper):
             return
         
         # Otherwise, we generate one event per final address.
+        additional = False
         for address in addresses:
             data['address'] = address
+            if additional:
+                data['id'] = self.id
             yield data
+            additional = True
         
         return
     
