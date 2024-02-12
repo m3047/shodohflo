@@ -163,6 +163,7 @@ class MyMapper(JSONMapper):
                     ignore = ip_address(addr)
             except:
                 logging.info('Invalid address "{}" ({}) {} {}'.format(addr, data['qtype'], chain, addresses))
+                self.id_ -= 1
                 return
         else:
             addresses = None
