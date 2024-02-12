@@ -219,6 +219,7 @@ class JSONMapper(object):
         """
         response = packet.field('response_message')[1]
         question = response.question[0].name.to_text().lower()
+        qtype = response.question[0].rdtype
         
         # Deal with NXDOMAIN.
         if response.rcode() == rcode.NXDOMAIN:
@@ -235,13 +236,15 @@ class JSONMapper(object):
             name = names.pop(0)
             if name in mapping:
                 rr_values = [ rr.to_text().lower() for rr in mapping[name] ]
-                if mapping[name].rdtype == rdatatype.CNAME:
+                rdtype = mapping[name].rdtype
+                if   rdtype == rdatatype.CNAME:
                     for rr in rr_values:
                         if rr in seen:
                             continue
                         names.append(rr)
                         seen.add(rr)
-                chain.append( rr_values )
+                elif rdtype == qtype:
+                    chain.append( rr_values )
         
         # Ellipsize if it exceeds MAX_BLOB.
         lengths = [ sum((len(name) for name in e)) for e in chain ]
