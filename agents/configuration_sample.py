@@ -27,6 +27,7 @@ TTL_GRACE = 900         # 15 minutes
 # PCAP_STATS = 600 # 10 minutes
 PCAP_STATS = None
 DNS_STATS = None
+DNSTAP_STATS = None
 
 # Strings to ignore in DNS traffic. Should be lowercased. Intended use is for stems,
 # but bear in mind that because of seach lists if it doesn't find for example

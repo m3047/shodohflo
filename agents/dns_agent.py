@@ -410,7 +410,11 @@ def main(address, port, interface=None):
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop( event_loop )
 
-    statistics = DNS_STATS and StatisticsFactory() or None
+    if DNS_STATS:
+        statistics = StatisticsFactory()
+        stats_routine = event_loop.create_task( statistics_report(statistics) )
+    else:
+        statistics = None
     
     try:
         if interface:
