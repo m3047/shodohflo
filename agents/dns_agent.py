@@ -360,6 +360,8 @@ class Consumer(asyncio.DatagramProtocol):
 
     async def handle_datagram(self, datagram, peer_address, datagram_timer, promise):
         """Consume JSON data."""
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("START handle_datagram")
         if self.consume_stats is not None:
             timer = self.consume_stats.start_timer()
 
@@ -369,6 +371,8 @@ class Consumer(asyncio.DatagramProtocol):
             timer.stop()
             datagram_timer.stop()
         self.requests.remove(promise[0])
+        if PRINT_COROUTINE_ENTRY_EXIT:
+            PRINT_COROUTINE_ENTRY_EXIT("END handle_datagram")
         return
     
     def datagram_received(self, datagram, peer):
