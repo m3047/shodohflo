@@ -237,13 +237,13 @@ class JSONMapper(object):
             if name in mapping:
                 rr_values = [ rr.to_text().lower() for rr in mapping[name] ]
                 rdtype = mapping[name].rdtype
-                if   rdtype == rdatatype.CNAME:
+                if rdtype == rdatatype.CNAME:
                     for rr in rr_values:
                         if rr in seen:
                             continue
                         names.append(rr)
                         seen.add(rr)
-                elif rdtype == qtype:
+                if rdtype == rdatatype.CNAME or rdtype == qtype:
                     chain.append( rr_values )
         
         # Ellipsize if it exceeds MAX_BLOB.
