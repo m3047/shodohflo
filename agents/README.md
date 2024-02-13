@@ -1,20 +1,28 @@
-The agents in this directory capture information and forward it to a _Redis_ instance.
+The agents in this directory capture information and forward it to a _Redis_ instance or, in the
+case of DNS data, potentially to other consumers.
 
-Before attempting to run either of them `cp configuration_sample.py configuration.py` and make
+Before attempting to run any of them `cp configuration_sample.py configuration.py` and make
 whatever edits are appropriate.
 
-### dns_agent.py
+### dnstap_agent.py
 
 This needs to run on the host running your local caching resolver, which has been compiled with _dnstap_ support.
 We assume that your local resolver is inside of your _NAT_ horizon.
 
 You can look in the `examples/` directory for a little more information about _dnstap_ and using it with _BIND_.
 
-It takes no arguments, although you may need to alter `SOCKET_ADDRESS` or `REDIS_SERVER`.
+You can run it in basic mode using command line arguments. The following configuration parameters are relevant:
+
+* `SOCKET_ADDRESS`
+* `LOG_LEVEL`
+* `DNSTAP_STATS`
+* `DNS_CHANNEL`
+* `DNS_MULTICAST_LOOPBACK`
+* `DNS_MULTICAST_TTL`
 
 #### expects only CLIENT_RESPONSE messages
 
-For best performance, the this script expects only CLIENT_RESPONSE type messages (see the DnsTap documentation).
+For best performance, this script expects only CLIENT_RESPONSE type messages (see the DnsTap documentation).
 Expected configuration in `named.conf` looks like:
 
 ```
@@ -23,6 +31,17 @@ dnstap-output unix "/tmp/dnstap";
 ```
 
 If you fail to do this then a warning message will be generated every time a new connection is extablished.
+
+### dns_agent.py
+
+Consumes `dnstap_agent.py` telemetry and updates _Redis_. The following configuration parameters are relevant:
+
+* `REDIS_SERVER`
+* `LOG_LEVEL`
+* `TTL_GRACE`
+* `DNS_STATS`
+* `IGNORE_DNS`
+* `DNS_CHANNEL`
 
 ### pcap_agent.py
 
@@ -42,30 +61,13 @@ pcap_agent.py <interface> <our-network>
 Theoretically it will work with either IP4 or IP6, figuring that out from _our-network_; however it hasn't been
 tested with IP6.
 
-You may also need to alter `REDIS_SERVER`.
+The following configuration parameters are relevant:
 
-### socket.getaddrinfo() observed unreliable (June 2019)
-
-_Redis_ calls `socket.getaddrinfo()` when a hostname is supplied. This has been observed to be case sensitive,
-causing issues when using DNS resolution, because DNS is supposed to be case insensitive and `getaddrinfo()`
-is not honoring that:
-
-```
-# python3
-Python 3.6.5 (default, Mar 31 2018, 19:45:04) [GCC] on linux
-Type "help", "copyright", "credits" or "license" for more information.
->>> from socket import getaddrinfo
->>> getaddrinfo('sophia.m3047',6379)
-[(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_DGRAM: 2>, 17, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_RAW: 3>, 0, '', ('209.221.140.128', 6379))]
->>> getaddrinfo('SOPHIA.m3047',6379)
-[(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('10.0.0.224', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_DGRAM: 2>, 17, '', ('10.0.0.224', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_RAW: 3>, 0, '', ('10.0.0.224', 6379))]
->>> getaddrinfo('does-not-exist.m3047',6379)
-[(<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_STREAM: 1>, 6, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_DGRAM: 2>, 17, '', ('209.221.140.128', 6379)), (<AddressFamily.AF_INET: 2>, <SocketKind.SOCK_RAW: 3>, 0, '', ('209.221.140.128', 6379))]
-```
-
-Both agents have an option to use _dnspython_ for hostname resolution by setting `USE_DNSPTYHON = True`. This
-isn't an additional dependency for the DNS agent, but it is for the packet capture agent. Look in the
-configuraton file for further information.
+* `REDIS_SERVER`
+* `LOG_LEVEL`
+* `TTL_GRACE`
+* `PCAP_STATS`
+* `IGNORE_FLOW`
 
 ### Running at the command line
 
@@ -129,3 +131,20 @@ The following time frames are given:
 In general, as long as `d` stays reasonable (single digits) things are probably ok. `socket_recv` is
 inverted, in that a value of `0` (or very close to `0`) means that there is data waiting to be read
 immediately, or in other words data is being buffered in the network stack.
+
+### Multicast
+
+The _Dnstap Agent_ (as well as the _DNS Agent_) supports _multicast_, allowing the same datagram to be
+delivered to multiple consumers, as opposed to the normal _unicast_ where the packet is delivered to
+a single consumer.
+
+You don't need to configure anything at the system level to use multicast. A _multicast group_ looks
+just like an IP address; you specify the group and a port as you would with a normal address.
+When using multicast you also specify the interface to send or receive
+datagrams on; you specify the interface by specifying the address bound to that interface.
+
+You will probably want to randomly pick a multicast group from either `224.0.0.128/25`, `224.3.0.0/16`, or
+`224.4.0.0/16`. The first block above is defined as locally scoped and not routed; the latter two are not. In that case
+it is important to set a _TTL_ (time to live) for the packets. The TTL on IP packets is decremented at
+each routing / forwarding point. The default is 1, meaning that traffic is confined to the LAN (or other
+VMs on the same host).
