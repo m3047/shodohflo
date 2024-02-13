@@ -16,9 +16,7 @@ import logging
 # LOG_LEVEL = logging.INFO
 LOG_LEVEL = None
 
-# This sets the minimum expire time for Redis entries. In the case of DNS
-# events this is added to the TTL of the artifact; in the case of packet
-# captures it is the expire time.
+# This sets the expire time for Redis entries.
 TTL_GRACE = 900         # 15 minutes
 
 # Number of seconds between performance logging events. Can be set individually
