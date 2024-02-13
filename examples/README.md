@@ -52,8 +52,11 @@ You should first `cp configuration_sample.py configuration.py` and modify approp
 
 ### dnstap2json.py
 
-This program writes line-oriented JSON to either STDOUT or a UDP socket. The JSON is intended to be
+This program writes line-oriented JSON to either STDOUT or a UDP socket. It supports both unicast
+(normal) and multicast UDP sockets. The JSON is intended to be
 customizable, see the internal documentation (`pydoc3 dnstap2json.JSONMapper` ).
+
+This program is subclassed to implement the _Dnstap Agent_ (`../agents/dnstap_agent.py`)
 
 Run it, listening to the domain socket `/tmp/dnstap`, outputting to STDOUT:
 
