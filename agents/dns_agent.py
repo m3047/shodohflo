@@ -51,6 +51,8 @@ from os import path
 import logging
 import traceback
 
+from time import time
+
 import asyncio
 import socket
 from ipaddress import ip_address
@@ -101,6 +103,9 @@ if USE_DNSPYTHON:
 if DNS_CHANNEL is None:
     DNS_CHANNEL = {}
 
+# How old a telemetry source has to be to reap it (memory leak prevention).
+STALE_PEER = 3600   # 1 hour
+
 # Start/end of coroutines. You will probably also want to enable it in shodohflo.fstrm.
 PRINT_COROUTINE_ENTRY_EXIT = None
 
@@ -119,23 +124,63 @@ def lart(msg=''):
     sys.exit(1)
 
 class DictOfCounters(dict):
+    REAP_FREQUENCY = 60 # Once a minute.
+    
+    def __init__(self, *args, **kwargs):
+        dict.__init__(self, *args, **kwargs)
+        self.next_reap = time() + self.REAP_FREQUENCY
+        return
+    
+    def update_entry(self, entry, v=None):
+        """Update / check for stale entries.
+        
+        Each entry is an array with two elements:
+            0   The sequence number we're tracking for the peer.
+            1   The timestamp when the sequence number last changed.
+        """
+        now = time()
+
+        if v is None:
+            entry[0] += 1
+        else:
+            entry[0] = v
+        entry[1] = now
+
+        if now < self.next_reap:
+            return
+        while self.next_reap < now:
+            self.next_reap += self.REAP_FREQUENCY
+
+        reap = now - STALE_PEER
+        to_reap = set()
+        for peer, peer_entry in self.items():
+            if peer_entry[1] < reap:
+                to_reap.add(peer)
+        for peer in to_reap:
+            logging.info('Reaped: {}'.format(peer))
+            del self[peer]
+
+        return
+    
     def inc(self, k):
         """Return the postincrement value."""
         if k not in self:
-            self[k] = 0
-        self[k] += 1
-        return self[k]
+            self[k] = [0, 0]
+        self.update_entry( self[k] )
+        return self[k][0]
     
     def put(self, k, v):
-        self[k] = v
+        if k not in self:
+            self[k] = [0, 0]
+        self.update_entry( self[k], v )
         return
 
     def expected(self, k, v):
         if k not in self:
             return False
-        self[k] += 1
-        return self[k] == v
-    
+        self.update_entry( self[k] )
+        return self[k][0] == v
+
 class RedisHandler(RedisBaseHandler):
     """Handles calls to Redis so that they can be run in a different thread."""
 
@@ -327,14 +372,16 @@ class Consumer(asyncio.DatagramProtocol):
             field = 'id'
             if not self.last_id.expected( peer_address, message[field]):
                 if peer_address in self.last_id:
-                    logging.info('sequence ({}): {} -> {}'.format( peer_address, self.last_id[peer_address]-1, message[field] ))
+                    logging.info('sequence {}: {} -> {}'.format( peer_address, self.last_id[peer_address][0]-1, message[field] ))
+                else:
+                    logging.info('new peer {}'.format( peer_address ))
                 self.last_id.put( peer_address, message[field] )
             field = 'chain'
             chain = message[field]
             for i in range(len(chain)):
                 fqdn = chain[i]
                 if fqdn[-1] != '.':
-                    raise TypeError('"{}" does not look like an FQDN')
+                    raise TypeError('FQDN "{}" missing trailing "."'.format(fqdn))
                 chain[i] = fqdn.lower()
             chain.reverse()
             field = 'address'
@@ -345,14 +392,14 @@ class Consumer(asyncio.DatagramProtocol):
             message[field] = str(ip_address(message[field]))
             field = 'status'
             if message[field] not in self.ACCEPTED_STATUS:
-                logging.info('{} from {}'.format( message[field], peer_address ))
+                logging.info('{} from {} not in ACCEPTED_STATUS'.format( message[field], peer_address ))
                 return
             field = 'qtype'
             if message[field] not in self.redis.ADDRESS_RECORDS:
-                logging.info('{} from {}'.format( message[field], peer_address ))
+                logging.info('{} from {} not in ADDRESS_RECORDS'.format( message[field], peer_address ))
                 return
         except Exception as e:
-            logging.warning('{} from {} while processing {}'.format(type(e).__name__, peer_address, field))
+            logging.warning('{} from {} while processing {}: {}'.format(type(e).__name__, peer_address, field, e))
             return
 
         self.post_to_redis(message)
@@ -378,7 +425,7 @@ class Consumer(asyncio.DatagramProtocol):
     def datagram_received(self, datagram, peer):
         promise = []
         task = self.event_loop.create_task(
-                    self.handle_datagram( datagram, peer[0],
+                    self.handle_datagram( datagram, peer,
                                           self.datagram_stats is not None and self.datagram_stats.start_timer() or None,
                                           promise
             )                           )
