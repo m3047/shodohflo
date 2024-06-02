@@ -4,9 +4,19 @@ case of DNS data, potentially to other consumers.
 Before attempting to run any of them `cp configuration_sample.py configuration.py` and make
 whatever edits are appropriate.
 
+The three agents do the following:
+
+* `dnstap_agent.py` reads (BIND, Unbound) _Dnstap_ telemetry and emits events as UDP datagrams.
+* `dns_agent.py` reads UDP datagrams (as output by `dnstap_agent.py`) and writes them to _Redis_.
+* `pcap_agent.py` captures netflow information and writes it to _Redis_.
+
+[Rear View RPZ](https://github.com/m3047/rear_view_rpz) also consumes the datagrams produced by `dnstap_agent.py`.
+
+`dnstap_agent.py`, `dns_agent.py` and _Rear View RPZ_ support multicast as well as unicast datagrams.
+
 ### dnstap_agent.py
 
-This needs to run on the host running your local caching resolver, which has been compiled with _dnstap_ support.
+This needs to run on the host running your local caching resolver, which has been compiled with _Dnstap_ support.
 We assume that your local resolver is inside of your _NAT_ horizon.
 
 You can look in the `examples/` directory for a little more information about _dnstap_ and using it with _BIND_.
@@ -19,6 +29,9 @@ You can run it in basic mode using command line arguments. The following configu
 * `DNS_CHANNEL`
 * `DNS_MULTICAST_LOOPBACK`
 * `DNS_MULTICAST_TTL`
+
+This agent is based on the [`dnstap2json.py`](../examples/dnstap2json.py) example program which you can use as a starting point if
+you need custom _Dnstap_ telemetry.
 
 #### expects only CLIENT_RESPONSE messages
 
@@ -148,3 +161,14 @@ You will probably want to randomly pick a multicast group from either `224.0.0.1
 it is important to set a _TTL_ (time to live) for the packets. The TTL on IP packets is decremented at
 each routing / forwarding point. The default is 1, meaning that traffic is confined to the LAN (or other
 VMs on the same host).
+
+### Debugging / tasting DNS telemetry datagrams
+
+You can of course use _Wireshark_ to read the telemetry.
+
+_Netcat_ (`nc`) can be used to both read and write UDP DNS event datagrams. `nc -luk ...` will read them. `nc -u ...` will write them.
+It's JSON format so not to hard to do with your own fingers. Because it is unicast netcat has to be the only recipient of traffic,
+although you can inject additional datagrams into what a listener receives.
+
+Multicast is a "party line" which means it is expected that you may have multiple broadcasters as well as listeners. Here's a 
+_Netcat_ equivalent which you may find useful: http://athena.m3047.net/pub/python/multicast/
