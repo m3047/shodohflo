@@ -124,7 +124,7 @@ LOG_LEVEL = None
 TTL_GRACE = None
 PCAP_STATS = None
 SUPPRESS_OWN_NETWORK = True
-IGNORE_FLOW = None
+IGNORE_FLOW = set()
 
 if __name__ == "__main__":
     from configuration import *
