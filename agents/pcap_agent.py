@@ -31,15 +31,40 @@ traffic coming from the Redis server will trigger the logic which communicates
 with the redis server.
 
 Keys written to Redis in all cases include remote addresses/ports as part of the key,
-and the value is a relative count, not the true number of packets:
+and the value is a relative count, not the true number of packets.
+
+In the case of flow, client-address is always the address in "our network".
+
+  * If the destination is in our network:
+    * client-address is the destination
+    * remote-address is the source
+    * remote-port is the source port
+  * This leaves the case of an outgoing packet to a destination which is not in our network:
+    * client-address is the source
+    * remote-address is the destination
+    * remote-port is the destination port
 
     <client-address>;<remote-address>;<remote-port>;flow -> count (TTL_GRACE)
+    
+In the case of rst, the destination always has to be in "our network".
+
+    * client-address is the destination
+    * remote-address is the source
+    * remote_port is the destination and source ports concatenated with a ':'
 
     <client-address>;<remote-address>;<remote-port>;rst -> count (TTL_GRACE)
+    
+In the case of peer, both records are written for each event.
 
     <client-address>;<remote-address>;peer -> count (TTL_GRACE)
 
     <remote-address>;<client-address>;peer -> count (TTL_GRACE)
+    
+In the case of icmp, the destination always has to be in "our network".
+
+    * client-address is the destination
+    * remote-address is the source
+    * remote-port is the source and destination ports concatenated with a ':'
 
     <client-address>;<remote-address>;<remote-port>;<icmp-code>;icmp -> count (TTL_GRACE)
         ICMP code is one of the unreachable codes accompanying type 3
