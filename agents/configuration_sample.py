@@ -39,13 +39,34 @@ IGNORE_DNS = None
 # flows. Setting this to FALSE records all own network flows. Regardless,
 # FLOWS ORIGINATING FROM THE MONITORED INTERFACE WILL NOT BE RECORDED. This
 # technical limitation is discussed elsewhere.
+#
+# If you define NETWORK_ENUMERATION and FLOW_MAPPING beyond the trivial defaults,
+# you will probably want to set this to False. Suppresses flows between two addresses
+# in our-nets.
 # SUPPRESS_OWN_NETWORK = True
+
+# For fine grained, intelligent control based on ports, you will want to define
+# NETWORK_ENUMERATION and FLOW_MAPPING together. See the documentation in
+# shodohflo.pcap_config for details beyond what is given here.
+#
+# The defaults, shown here, capture all flows attempting to identify the client
+# and server sides of the flow based on the heuristic that the lower port number
+# represents the server side of the flow. This is subject to
+# our-nets (specified on the command line) / SUPPRESS_OWN_NETWORK.
+#
+# Required.
+# from shodohflo.pcap_config import NetworkEnumeration, FlowMapping
+# Optional farkles for the above.
+# from shodohflo.pcap_config import OUR_4NETS, OUR_6NETS, PortMatch, Assign, LowerPort
+#
+# NETWORK_ENUMERATION = NetworkEnumeration('all', '0.0.0.0/0')
+# FLOW_MAPPING = FlowMapping( (None, None, LowerPort()) )
 
 # Sometimes we have services which answer questions from local clients and which
 # generate a nontrivial number of flows. IGNORE_FLOW allows you to define tuples
 # which do not generate flows if they represent either end of the flow. This does
-# not affect the recording of peers.
-IGNORE_FLOW = None
+# not affect the recording of peers, but overrides NETWORK_ENUMERATION / FLOW_MAPPING.
+# IGNORE_FLOW = set()
 # We have a nameserver on 10.0.11.23 which answers a lot of questions and we don't
 # care to see it. We also have a web server which receives telemetry updates which
 # we don't care to see.

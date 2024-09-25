@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2023 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2024 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,14 @@ Takes two arguments:
     interface:  The interface to listen on in promiscuous mode.
     our-nets:   A network mask which indicates which end of the connection is
                 "our" end.
+                
+our-nets is used as follows:
+
+  * ICMP and RST have to have a destination in our-nets
+  * In conjunction with SUPPRESS_OWN_NETWORK (which defaults to True) it suppresses
+    any flows for which the source and destination are both in our-nets
+  * If you define nets (NETWORK_ENUMERATION) and flows (FLOW_MAPPING) beyond the
+    trivial defaults you will probably want to set SUPPRESS_OWN_NETWORK to False.
 
 POTENTIAL RACE CONDITION: Make sure that the address of the Redis server is in our-nets
 or that you're not communicating with it on the interface you're watching. Otherwise, 
@@ -109,6 +117,8 @@ from redis.exceptions import ConnectionError
 
 sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 
+from shodohflo.pcap_config import NetworkEnumeration, LowerPort, FlowMapping, update_our_nets
+
 from shodohflo.redis_handler import RedisBaseHandler
 from shodohflo.utils import Once, Recent
 from shodohflo.statistics import StatisticsFactory
@@ -125,6 +135,8 @@ TTL_GRACE = None
 PCAP_STATS = None
 SUPPRESS_OWN_NETWORK = True
 IGNORE_FLOW = set()
+NETWORK_ENUMERATION = NetworkEnumeration( ('all', '0.0.0.0/0') )
+FLOW_MAPPING = FlowMapping( (None, None, LowerPort()) )
 
 if __name__ == "__main__":
     from configuration import *
@@ -275,6 +287,8 @@ class RedisHandler(RedisBaseHandler):
 class Server(object):
     def __init__(self, interface, our_network, event_loop, statistics):
         sock, Packet, our_network = get_socket(interface, our_network)
+        update_our_nets( our_network )
+        FLOW_MAPPING.number_networks( NETWORK_ENUMERATION )
         self.sock = sock
         self.Packet = Packet
         self.our_network = our_network
@@ -319,7 +333,7 @@ class Server(object):
 
                 src = to_address(pkt.src)
                 dst = to_address(pkt.dst)
-
+                
                 if pkt.p == socket.IPPROTO_ICMP:
 
                     # In the ICMP case we care about a machine in our network which is receiving
@@ -366,30 +380,25 @@ class Server(object):
                     # In the TCP and UDP cases we need to figure out if the traffic is between a
                     # machine in our network and a machine not in our network, as those are the
                     # only normal cases we care about (but we care about them both).
-                    if   dst in self.our_network:
+                    k = ''
+                    if dst in self.our_network:
                         if pkt.p == socket.IPPROTO_TCP and pkt.data.flags & dpkt.tcp.TH_RST:
                             # This is a special case where there is a TCP RST seen, and we
                             # want to capture it even if the remote is on our network.
-                            ptype = 'rst'
                             remote_port = ':'.join((str(port) for port in (pkt.data.dport, pkt.data.sport)))
+                            client = dst
+                            remote = src
+                            k = "{};{};{};rst".format(client, remote, remote_port)
                         elif SUPPRESS_OWN_NETWORK and src in self.our_network:
                             break
-                        else:
-                            # This is the normal case.
-                            ptype = 'flow'
-                            remote_port = pkt.data.sport
-                        client = str(dst)
-                        remote = str(src)
-                        k = "{};{};{};{}".format(client, remote, remote_port, ptype)
-                    elif src in self.our_network:
-                        # We've already established dst is not in our network or we would have
-                        # caught it above.
-                        client = str(src)
-                        remote = str(dst)
-                        remote_port = pkt.data.dport
-                        k = "{};{};{};flow".format(client, remote, remote_port)
-                    else:
-                        break
+                    
+                    if not k:
+                        # Picks the right client, server and server port if possible.
+                        mapping = FLOW_MAPPING.match( src, pkt.data.sport, dst, pkt.data.dport )
+                        if mapping is None:
+                            break
+                        k = "{};{};{};flow".format(*mapping)
+                        client, remote, remote_port = mapping
                 else:
                     break
                     
@@ -399,7 +408,7 @@ class Server(object):
                 if PRINT_PACKET_FLOW:
                     PRINT_PACKET_FLOW("{} <-> {}#{}".format(client, remote, remote_port))
 
-                if k.endswith('icmp') or k.endswith('rst'):
+                if   k.endswith('icmp') or k.endswith('rst'):
                     redis_keys = [ k ]
                 elif (pkt.src, pkt.data.sport) in IGNORE_FLOW or (pkt.dst, pkt.data.dport) in IGNORE_FLOW:
                     # This will still update the "client;..." key.
