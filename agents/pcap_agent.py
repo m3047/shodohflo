@@ -167,6 +167,7 @@ ICMP_DST_UNREACHABLE = 3
 
 TCP_OR_UDP = set((socket.IPPROTO_TCP, socket.IPPROTO_UDP))
 PROTOCOLS = set((socket.IPPROTO_TCP, socket.IPPROTO_UDP, socket.IPPROTO_ICMP))
+SYN_OR_FIN = dpkt.tcp.TH_SYN | dpkt.tcp.TH_FIN
 
 # Start/end of coroutines.
 PRINT_COROUTINE_ENTRY_EXIT = None
@@ -393,6 +394,10 @@ class Server(object):
                             break
                     
                     if not k:
+                        if pkt.p == socket.IPPROTO_TCP and pkt.data.flags & SYN_OR_FIN:
+                            # Only want TCP packets which don't have a SYN or FIN. That means
+                            # that they're legitimate TCP connections.
+                            break
                         # Picks the right client, server and server port if possible.
                         mapping = FLOW_MAPPING.match( src, pkt.data.sport, dst, pkt.data.dport )
                         if mapping is None:
