@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019 by Fred Morris Tacoma WA
+# Copyright (c) 2019,2024 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ import redis
 class RedisBaseHandler(object):
     """Handles calls to Redis so that they can be run in a different thread."""
     
+    REDIS_KEY_CLIENT = 'client;{}'
+    
     CONNECT_TIMEOUT = 5
 
     def redis_server(self):
@@ -55,7 +57,7 @@ class RedisBaseHandler(object):
     
     def client_to_redis(self, client_address):
         """Called internally by the other *_to_redis() methods to update the client."""
-        k = 'client;{}'.format(client_address)
+        k = self.REDIS_KEY_CLIENT.format(client_address)
         self.redis.incr(k)
         self.redis.expire(k, self.ttl_grace)
         return

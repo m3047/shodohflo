@@ -28,10 +28,13 @@ Takes two arguments:
 our-nets is used as follows:
 
   * ICMP and RST have to have a destination in our-nets
+  * To define the OUR_4NETS or OUR_6NETS special value used in defining a
+    NetworkEnumeration.
   * In conjunction with SUPPRESS_OWN_NETWORK (which defaults to True) it suppresses
     any flows for which the source and destination are both in our-nets
-  * If you define nets (NETWORK_ENUMERATION) and flows (FLOW_MAPPING) beyond the
-    trivial defaults you will probably want to set SUPPRESS_OWN_NETWORK to False.
+
+If you define nets (NETWORK_ENUMERATION) and flows (FLOW_MAPPING) beyond the
+trivial defaults you will probably want to set SUPPRESS_OWN_NETWORK to False.
 
 POTENTIAL RACE CONDITION: Make sure that the address of the Redis server is in our-nets
 or that you're not communicating with it on the interface you're watching. Otherwise, 
@@ -94,6 +97,15 @@ set to a print function which accepts a string, for example:
 
     PRINT_THIS = logging.debug
     PRINT_THAT = print
+    
+REDIS_KEY_ Strings
+------------------
+
+All format strings for the keys written to Redis are defined as constants. The
+declarations occur before importing the configuration, so you can alter them in
+the configuration file if you wish to. Hopefully this will also make it easier
+to locate the responsible code as well.
+
 """
 
 import sysconfig
@@ -137,6 +149,12 @@ SUPPRESS_OWN_NETWORK = True
 IGNORE_FLOW = set()
 NETWORK_ENUMERATION = NetworkEnumeration( ('all', '0.0.0.0/0') )
 FLOW_MAPPING = FlowMapping( (None, None, LowerPort()) )
+
+REDIS_KEY_ICMP = "{};{};{};{};icmp"
+REDIS_KEY_RST = "{};{};{};rst"
+REDIS_KEY_FLOW = "{};{};{};flow"
+REDIS_KEY_PEER = '{};{};peer'
+REDIS_KEY_CLIENT = 'client;{}'
 
 if __name__ == "__main__":
     from configuration import *
@@ -295,6 +313,7 @@ class Server(object):
         self.our_network = our_network
         self.recently = Recent()
         self.redis = RedisHandler(event_loop, TTL_GRACE, statistics)
+        self.redis.REDIS_KEY_CLIENT = REDIS_KEY_CLIENT
         if PCAP_STATS:
             self.process_data_stats = statistics.Collector("process_data")
             self.socket_recv_stats = statistics.Collector("socket_recv")
@@ -368,7 +387,7 @@ class Server(object):
                                                 for x in (0,2)
                                                 ))
                         
-                    k = "{};{};{};{};icmp".format(client, remote, remote_port, icmp_code)
+                    k = REDIS_KEY_ICMP.format(client, remote, remote_port, icmp_code)
                     
                 elif pkt.p in TCP_OR_UDP:
                     # Reject packets which cannot be decoded.
@@ -389,7 +408,7 @@ class Server(object):
                             remote_port = ':'.join((str(port) for port in (pkt.data.dport, pkt.data.sport)))
                             client = dst
                             remote = src
-                            k = "{};{};{};rst".format(client, remote, remote_port)
+                            k = REDIS_KEY_RST.format(client, remote, remote_port)
                         elif SUPPRESS_OWN_NETWORK and src in self.our_network:
                             break
                     
@@ -402,7 +421,7 @@ class Server(object):
                         mapping = FLOW_MAPPING.match( src, pkt.data.sport, dst, pkt.data.dport )
                         if mapping is None:
                             break
-                        k = "{};{};{};flow".format(*mapping)
+                        k = REDIS_KEY_FLOW.format(*mapping)
                         client, remote, remote_port = mapping
                 else:
                     break
@@ -419,7 +438,7 @@ class Server(object):
                     # This will still update the "client;..." key.
                     redis_keys = [ ]
                 else:
-                    redis_keys = [ k ] + [ '{};{};peer'.format(*peers) for peers in ((src,dst), (dst,src)) ]
+                    redis_keys = [ k ] + [ REDIS_KEY_PEER.format(*peers) for peers in ((src,dst), (dst,src)) ]
 
                 self.redis.submit(self.redis.flow_to_redis, client, *redis_keys )
 
