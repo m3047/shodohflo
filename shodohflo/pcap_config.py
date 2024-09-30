@@ -218,6 +218,7 @@ class PortMatch(MappingAction):
         return
 
     def match(self, *args):
+        """"""
         for i in range(2):
             if args[self.precedence[i] + 1] in self.set_of_ports:
                 if self.drop: return (None, None, None)
@@ -266,6 +267,7 @@ class Assign(MappingAction):
         return
         
     def match(self, *args):
+        """"""
         if self.set_of_ports is None or args[ self.mapping[2] ] in self.set_of_ports:
             if self.drop: return (None, None, None)
             return tuple( args[i] for i in self.mapping )
@@ -291,6 +293,7 @@ class LowerPort(MappingAction):
         return
 
     def match(self, src_addr, src_port, dst_addr, dst_port):
+        """"""
         if   src_port < dst_port:
             return (dst_addr, src_addr, src_port)
         elif dst_port < src_port:
