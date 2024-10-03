@@ -191,9 +191,12 @@ class MappingAction(object):
 class PortMatch(MappingAction):
     """A mapping where addresses are determined from ports.
     
-    In this mapping if e.g. the source port matches one of the specified ports
-    then the service-address is inferred to be the source address associated with
-    that port (and the client-address is the other one).
+    This mapping is bi-directional: either the source port or the destination port
+    may match.
+    
+    If e.g. the source port matches one of the specified ports then the
+    service-address is inferred to be the source address associated with that port
+    (and the client-address is the other one, the destination).
     """
     def __init__(self, set_of_ports, precedence=SOURCE, drop=False):
         """Parameters:
@@ -228,9 +231,14 @@ class PortMatch(MappingAction):
 class Assign(MappingAction):
     """A mapping which explicitly assigns flow source and destination.
     
-    In this mapping if the source or destination port matches the set of
-    ports (if supplied) then the client-address, service-address and
-    port-of-interest are set as specified.
+    This mapping is unidirectional: port_from specifies whether the source port
+    or destination port is to be matched. client_from specifies whether the source
+    or destination address should be used as the client; the service-address is
+    then the other one.
+    
+    In this mapping if SOURCE is specified as port_from then the source 
+    port must match the set of ports (if supplied) and becomes the port-of-interest.
+    The client-address and service-address are set as specified above.
     
     """
     def __init__(self, client_from, port_from, set_of_ports=None, drop=False):
