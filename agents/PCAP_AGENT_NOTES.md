@@ -3,6 +3,8 @@
 This document discusses the extended capabilities for filtering and port / service attribution available by configuring
 `NETWORK_ENUMERATION` and `FLOW_MAPPING`.
 
+## A walkthrough
+
 I have several (sub)networks, and two servers with multiple network interfaces. I run instances of the `pcap_agent` listening
 to all interfaces on `bert` but only internal interfaces on `ernie`. They write to locally hosted instances of _Redis_ 
 (which have [RKVDNS](https://github.com/m3047/rkvdns) in front of them, but that's another story).
@@ -84,3 +86,8 @@ the flows captured.
 
 `ernie` is more subtle. As noted we don't run the agent on its external interface because it would be too noisy. But if we were seeing its
 external address on any of the internal networks we'd want to know about it.
+
+## Epilogue: throughput
+
+My design goal for the packet capture agent has always been to have a throughput of at least **1000 packets per second**. With the above
+configuration I have confirmed that this is still the case. Of course, this will vary depending on local conditions.
