@@ -44,18 +44,12 @@ with the redis server.
 Keys written to Redis in all cases include remote addresses/ports as part of the key,
 and the value is a relative count, not the true number of packets.
 
-In the case of flow, client-address is always the address in "our network".
+In the case of flow, by default a heuristic is utilized that the lower port belongs
+to the service, and the server-address is the same (source or destination) as the
+whether the source or destination has the lower port. See shodohflo.pcap_config for
+sophisticated flow mapping.
 
-  * If the destination is in our network:
-    * client-address is the destination
-    * remote-address is the source
-    * remote-port is the source port
-  * This leaves the case of an outgoing packet to a destination which is not in our network:
-    * client-address is the source
-    * remote-address is the destination
-    * remote-port is the destination port
-
-    <client-address>;<remote-address>;<remote-port>;flow -> count (TTL_GRACE)
+    <client-address>;<server-address>;<service-port>;flow -> count (TTL_GRACE)
     
 In the case of rst, the destination always has to be in "our network".
 
