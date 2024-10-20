@@ -65,11 +65,14 @@ In the case of peer, both records are written for each event.
 
     <remote-address>;<client-address>;peer -> count (TTL_GRACE)
     
-In the case of icmp, the destination always has to be in "our network".
+In the case of icmp, the destination always has to be in "our network". This is
+effectively but not exactly true because everything except the client-address actually
+comes from the bounce payload. See the inline comment in the code for a longer
+explanation.
 
     * client-address is the destination
     * remote-address is the source
-    * remote-port is the source and destination ports concatenated with a ':'
+    * remote-port is the destination and source ports concatenated with a ':'
 
     <client-address>;<remote-address>;<remote-port>;<icmp-code>;icmp -> count (TTL_GRACE)
         ICMP code is one of the unreachable codes accompanying type 3
@@ -315,7 +318,11 @@ class Server(object):
         return
     
     def process_data(self):
-        """Called by the event loop when there is a packet to process."""
+        """Called by the event loop when there is a packet to process.
+        
+        The longer explanation for where ICMP remote-address and the source and
+        destination ports come from is embedded in the code for this method.
+        """
         if PCAP_STATS:
             if self.socket_recv_timer is not None:
                 self.socket_recv_timer.stop()
@@ -371,6 +378,25 @@ class Server(object):
                     if bounce.p not in TCP_OR_UDP:
                         break
 
+                    # There is no Easter Bunny. ;-) In the pydoc for this program it is described
+                    # that the remote-address and ports are respectively source / destination / source
+                    # but examining the code here quickly makes it apparent that in fact this
+                    # is inverted in the actual code.
+                    #
+                    # First and most important observation: these are ICMP messages for a UDP
+                    # failure condition (host / port / network unreachable). UDP has ports, 
+                    # ICMP does not. The information about the failure comes from the packet
+                    # payload, and the payload reflects what was received and triggered the failure
+                    # condition at the remote end, hence source and destination are inverted.
+                    #
+                    # Theoretically the (ICMP) packet source address might not be the same as the destination
+                    # address in the payload, but it is in practice. Theoretically, the packet
+                    # destination address (attributed as the client-address) might not be the same
+                    # as the payload source address either. This would imply that the ICMP message
+                    # has been misdirected somehow; we presume that if this has occurred that the cause
+                    # is some sort of firewall / router / load balancer header rewriting of the packet
+                    # destination address, and so the packet header destination is the correct address
+                    # for attribution as client-address rather the one in the ICMP payload.
                     client = str(dst)
                     remote = str(to_address(bounce.dst))
                     # dpkt may or may not succeed in recognizing and decoding the header of the bounced packet.
