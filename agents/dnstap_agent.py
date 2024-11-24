@@ -86,7 +86,6 @@ from dnstap2json import main, JSONMapper, FieldMapping
 SOCKET_ADDRESS = '/tmp/dnstap'
 LOG_LEVEL = None
 DNSTAP_STATS = None
-#PRINT_COROUTINE_ENTRY_EXIT = None
 PRINT_COROUTINE_ENTRY_EXIT = None
 
 DNS_CHANNEL = None
@@ -133,6 +132,8 @@ class MyMapper(JSONMapper):
         if not JSONMapper.filter(self, packet):
             return False
         message = packet.field('response_message')[1]
+        if message.rcode() == rcode.NXDOMAIN:
+            return True
         if not len(message.answer):
             return False
         if message.question[0].rdtype not in tuple( rset.rdtype for rset in message.answer ):
