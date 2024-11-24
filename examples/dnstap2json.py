@@ -409,7 +409,7 @@ class DnsTap(Consumer):
         # NOTE: This function is called in coroutine context, but is not the coroutine itself.
         # Enable PRINT_COROUTINE_ENTRY_EXIT in shodohflo.fstrm if needed.
         if PRINT_COROUTINE_ENTRY_EXIT:
-            print('START consume')
+            PRINT_COROUTINE_ENTRY_EXIT('START consume')
         if STATS:
             timer = self.consume_stats.start_timer()
 
@@ -418,7 +418,7 @@ class DnsTap(Consumer):
             if STATS:
                 timer.stop()
             if PRINT_COROUTINE_ENTRY_EXIT:
-                print('END consume')
+                PRINT_COROUTINE_ENTRY_EXIT('END consume')
             return True
 
         for data in self.mapper.map_fields(message):
@@ -429,7 +429,7 @@ class DnsTap(Consumer):
         if STATS:
             timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
-            print('END consume')
+            PRINT_COROUTINE_ENTRY_EXIT('END consume')
         return True
     
     def finished(self, partial_frame):
