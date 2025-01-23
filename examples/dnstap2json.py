@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2024 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2025 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -226,7 +226,10 @@ class JSONMapper(object):
             return [ [question] ]
 
         # Build a mapping of the rrsets.
-        mapping = { rrset.name.to_text().lower():rrset for rrset in response.answer }
+        mapping = { rrset.name.to_text().lower():rrset
+                    for rrset in response.answer
+                    if rdtype == rdatatype.CNAME or rdtype == qtype
+                  }
         
         # Follow the question (CNAMEs) to an answer.
         names = [ question ]
@@ -243,8 +246,7 @@ class JSONMapper(object):
                             continue
                         names.append(rr)
                         seen.add(rr)
-                if rdtype == rdatatype.CNAME or rdtype == qtype:
-                    chain.append( rr_values )
+                chain.append( rr_values )
         
         # Ellipsize if it exceeds MAX_BLOB.
         lengths = [ sum((len(name) for name in e)) for e in chain ]
