@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2024 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2025 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,6 +92,8 @@ DNS_CHANNEL = None
 DNS_MULTICAST_LOOPBACK = None
 DNS_MULTICAST_TTL = None
 
+EXTENDED_CHAIN_LOGGING = False
+
 if __name__ == "__main__":
     from configuration import *
 
@@ -163,7 +165,16 @@ class MyMapper(JSONMapper):
                 for addr in addresses:
                     ignore = ip_address(addr)
             except:
-                logging.info('Invalid address "{}" ({}) {} {}'.format(addr, data['qtype'], chain, addresses))
+                if EXTENDED_CHAIN_LOGGING:
+                    logging.info('Invalid address "{}" ({}) {} {}\n  {}'.format(
+                        addr, data['qtype'], chain, addresses,
+                        { '{} ({})'.format(rrset.name.to_text().lower(), rdatatype.to_text(rrset.rdtype)):
+                            [ rr.to_text().lower() for rr in rrset ]
+                          for rrset in packet.field('response_message')[1].answer
+                        }
+                    ))
+                else:
+                    logging.info('Invalid address "{}" ({}) {} {}'.format(addr, data['qtype'], chain, addresses))
                 self.id_ -= 1
                 return
         else:

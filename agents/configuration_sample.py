@@ -16,6 +16,11 @@ import logging
 # LOG_LEVEL = logging.INFO
 LOG_LEVEL = None
 
+# dnstap_agent: If True, the entirety of the ANSWER section of the DNS response is
+# logged when an invalid address is encountered. Can be useful for debugging, but is
+# also potentially noisy.
+#EXTENDED_CHAIN_LOGGING = False
+
 # This sets the expire time for Redis entries.
 TTL_GRACE = 900         # 15 minutes
 
