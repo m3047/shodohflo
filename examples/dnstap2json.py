@@ -228,7 +228,7 @@ class JSONMapper(object):
         # Build a mapping of the rrsets.
         mapping = { rrset.name.to_text().lower():rrset
                     for rrset in response.answer
-                    if rdtype == rdatatype.CNAME or rdtype == qtype
+                    if rrset.rdtype == rdatatype.CNAME or rrset.rdtype == qtype
                   }
         
         # Follow the question (CNAMEs) to an answer.
