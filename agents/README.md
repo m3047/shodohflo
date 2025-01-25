@@ -25,6 +25,7 @@ You can run it in basic mode using command line arguments. The following configu
 
 * `SOCKET_ADDRESS`
 * `LOG_LEVEL`
+* `EXTENDED_CHAIN_LOGGING`
 * `DNSTAP_STATS`
 * `DNS_CHANNEL`
 * `DNS_MULTICAST_LOOPBACK`
