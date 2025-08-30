@@ -32,6 +32,14 @@ PCAP_STATS = None
 DNS_STATS = None
 DNSTAP_STATS = None
 
+# dnstap_agent: We have an option to die if there is a persistent I/O (write) problem,
+# rather than staying alive and spamming the log.
+#DNSTAP_EXIT_ON_PERSISTENT_FAILURE = True
+
+# dnstap_agent: Limits events for a given qname + rdtype to no more than once per this
+# number of seconds.
+#DNSTAP_DEDUPLICATION_SECONDS = 1
+
 # Strings to ignore in DNS traffic. Should be lowercased. Intended use is for stems,
 # but bear in mind that because of seach lists if it doesn't find for example
 # example.com, system will probably also try example.com.com, etc.

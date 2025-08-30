@@ -22,14 +22,14 @@ This program is adapted from agents/dns_agent.py.
 Command Line:
 ------------
 
-    dnstap2json.py <unix-socket> {<dest-host>:port} {interface-address}
+    dnstap2json.py <unix-socket> {<dest-host>:port {interface-address}}
     
 (Line oriented) JSON is written with each line terminated with '\\n'.
 
 Arguments:
 
-    <unix-socket> is required, and is the unix domain socket location to
-        which Dnstap data is being written.
+    <unix-socket> is required, and is the unix domain socket location from
+        which Dnstap data is being read.
     <dest-host> and <port> are optional (although if supplied both are required)
         and specify the receiving end of the stream of UDP packets. If not supplied,
         the JSON is written to stdout.
@@ -59,6 +59,8 @@ similar to:
 
     if __name__ == '__main__':
         main(MyMapper)
+        
+Look at ../agents/dnstap_agent.py as an example!
 
 Review the class documentation for important performance and configuration
 information.
@@ -89,6 +91,8 @@ import socket
 from ipaddress import ip_address
 
 import json
+from time import time
+from collections import deque
 
 import dns.rdatatype as rdatatype
 import dns.rcode as rcode
@@ -107,6 +111,12 @@ if PYTHON_IS_311:
     from asyncio import CancelledError
 else:
     from concurrent.futures import CancelledError
+
+# Number of seconds before we commit suicide after a failure to write with no bright
+# future on the horizon.
+WRITE_FAILURE_WINDOW = 10
+# Should we commit suicide at all?
+EXIT_ON_PERSISTENT_FAILURE = True
 
 logging.basicConfig(level=logging.INFO)
 
@@ -130,6 +140,14 @@ def hexify(data):
 def lart():
     print('{} <unix-socket> {{<udp-address>:<udp-port> {{<multicast-interface>}}}}'.format(path.basename(sys.argv[0]).split('.')[0]), file=sys.stderr)
     sys.exit(1)
+
+class CountingDict(dict):
+    """A dictionary of counters."""
+    def inc(self, k, v=1):
+        if k not in self:
+            self[k] = 0
+        self[k] += v
+        return
 
 class FieldMapping(object):
     """Maps a JSON name to its value."""
@@ -296,7 +314,7 @@ class UniversalWriter(object):
     """Plastering over the differences between file descriptors and network sockets."""
     
     FAKE_STDOUT_TIMEOUT = 0
-    
+        
     def __init__(self, destination, interface, event_loop):
         """If destination is supplied then this is a UDP socket, otherwise STDOUT."""
         self.destination = destination
@@ -316,7 +334,8 @@ class UniversalWriter(object):
             self.fd = sys.stdout
             set_blocking(self.fd.fileno(), False)
         self.loop = event_loop
-        self.tasks = set()
+        self.tasks = asyncio.Queue()
+        self.write_task = self.loop.create_task( self.writer() )
         return
     
     def close(self):
@@ -363,24 +382,73 @@ class UniversalWriter(object):
     def write(self, msg, backlog_timer):
         """To be called to queue something to be output.
         
-        Handles task management.
+        Handles task management and creates the task which performs the actual write.
         """
-        promise = []
-        task = self.loop.create_task( self.write_( msg, backlog_timer, promise ) )
-        self.tasks.add(task)
-        promise.append(task)
+        self.tasks.put_nowait( (msg, backlog_timer) )
         return
+    
+    @staticmethod
+    def failure_window_exceeded( timestamp ):
+        """Is the timestamp within WRITE_FAILURE_WINDOW?"""
+        return timestamp and (time() - timestamp) > WRITE_FAILURE_WINDOW
         
-    async def write_(self, msg, backlog_timer, promise):
-        """Called to queue something to be output."""
+    async def writer(self):
+        """Called to dequeue and send msg.
+        
+        Doing it as a persistent co-routine emptying a queue now.
+        """
         if PRINT_COROUTINE_ENTRY_EXIT:
-            PRINT_COROUTINE_ENTRY_EXIT("START write")
-        await self.loop.sock_sendall(self, self.encode_data(msg))
-        if backlog_timer:
-            backlog_timer.stop()
-        self.tasks.remove(promise[0])
+            PRINT_COROUTINE_ENTRY_EXIT("START writer")
+        tasks = self.tasks
+        write_failure = None
+        cancelled = False
+        while True:
+
+            try:
+                msg, backlog_timer = await tasks.get()
+                tasks.task_done()
+                # In the previous implementation, on (some) Linux systems our coroutine might be
+                # garbage collected while awaiting loop.sock_sendall(), in spite of the fact that
+                # we had a reference to it saved. Our mitigation was to save the Task object for
+                # loop.sock_sendall(). Now it runs continuously, and we still assign the sendall
+                # Task explicitly to a variable.
+                sending = True
+                sendall = self.loop.sock_sendall(self, self.encode_data(msg))
+                await sendall
+                sending = False
+                
+                if backlog_timer:
+                    backlog_timer.stop()
+                    backlog_timer = None
+
+                if self.failure_window_exceeded( write_failure ):
+                    write_failure = None
+            except CancelledError:
+                cancelled = True
+                break
+            except Exception as e:
+                # A common pattern observed with e.g. ConnectionRefusedError is that some requests
+                # give the appearance of success (and don't throw an exception) even though nothing
+                # is actually written. Since we're duck-typing the socket interface for
+                # loop.sock_sendall(), who knows?
+                if sending and backlog_timer:
+                    backlog_timer.stop()
+
+                if not write_failure:
+                    if isinstance(e, ConnectionError):
+                        logging.critical('Unable to write data (lost): {}'.format(e))
+                    else:
+                        logging.critical('Unable to write data (lost):\n{}'.format(traceback.format_exc(limit=3)))
+                    self.write_failure = time()
+                if self.failure_window_exceeded( write_failure ) and EXIT_ON_PERSISTENT_FAILURE:
+                    sys.exit(1)
+
+        # This actually never exits.
+        if not cancelled:
+            raise RuntimeError('UniversalWriter.writer() should never exit!')
+        
         if PRINT_COROUTINE_ENTRY_EXIT:
-            PRINT_COROUTINE_ENTRY_EXIT("END write")
+            PRINT_COROUTINE_ENTRY_EXIT("END writer")
         return
         
 class DnsTap(Consumer):
@@ -398,7 +466,7 @@ class DnsTap(Consumer):
     def accepted(self, data_type):
         logging.info('Accepting: {}'.format(data_type))
         if data_type != CONTENT_TYPE:
-            logging.warn('Unexpected content type "{}", continuing...'.format(data_type))
+            logging.warning('Unexpected content type "{}", continuing...'.format(data_type))
         # NOTE: This isn't technically correct in the async case, since DnsTap context is
         # the same for all connections. However, we're only ever expecting one connection
         # at a time and this is intended to provide a friendly hint to the user about their
@@ -465,6 +533,11 @@ async def statistics_report(statistics):
                     stat['depth']['minimum'], stat['depth']['maximum'], stat['depth']['one'], stat['depth']['ten'], stat['depth']['sixty'],
                     stat['n_per_sec']['minimum'], stat['n_per_sec']['maximum'], stat['n_per_sec']['one'], stat['n_per_sec']['ten'], stat['n_per_sec']['sixty'])
                 )
+
+        coroutines = CountingDict()
+        for task in (PYTHON_IS_311 and asyncio.all_tasks() or asyncio.Task.all_tasks()):
+            coroutines.inc(task._coro.__name__)        
+        STATISTICS_PRINTER( 'queues: writeq={} '.format(statistics.writer_tasks.qsize()) + ' '.join( '{}={}'.format(k,v) for k,v in sorted( coroutines.items() ) ) )
     return
 
 async def close_tasks(tasks):
@@ -479,9 +552,10 @@ async def close_tasks(tasks):
 def main_36(socket_address, destination, interface, Mapper_Class):
     event_loop = asyncio.get_event_loop()
     statistics = StatisticsFactory()
+    writer = UniversalWriter(destination, interface, event_loop)
     if STATS:
         stats_routine = asyncio.run_coroutine_threadsafe(statistics_report(statistics), event_loop)
-    writer = UniversalWriter(destination, interface, event_loop)
+        statistics.writer_tasks = writer.tasks
 
     try:
         event_loop.run_until_complete(
@@ -503,9 +577,10 @@ def main_36(socket_address, destination, interface, Mapper_Class):
 async def main_311(socket_address, destination, interface, Mapper_Class):
     event_loop = asyncio.get_running_loop()
     statistics = StatisticsFactory()
+    writer = UniversalWriter(destination, interface, event_loop)
     if STATS:
         stats_routine = event_loop.create_task( statistics_report(statistics) )
-    writer = UniversalWriter(destination, interface, event_loop)
+        statistics.writer_tasks = writer.tasks
     
     try:
         await Server(

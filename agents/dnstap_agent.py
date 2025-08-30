@@ -74,6 +74,7 @@ prepared to accept and reassemble UDP frags.
 import sys
 from os import path
 import logging
+from time import time
 
 from ipaddress import ip_address
 
@@ -93,6 +94,8 @@ DNS_MULTICAST_LOOPBACK = None
 DNS_MULTICAST_TTL = None
 
 EXTENDED_CHAIN_LOGGING = False
+DNSTAP_EXIT_ON_PERSISTENT_FAILURE = True
+DNSTAP_DEDUPLICATION_SECONDS = 1
 
 if __name__ == "__main__":
     from configuration import *
@@ -100,6 +103,7 @@ if __name__ == "__main__":
 if LOG_LEVEL is not None:
     logging.basicConfig(level=LOG_LEVEL)
 
+dnstap2json.EXIT_ON_PERSISTENT_FAILURE = DNSTAP_EXIT_ON_PERSISTENT_FAILURE
 dnstap2json.STATS = DNSTAP_STATS
 dnstap2json.PRINT_COROUTINE_ENTRY_EXIT = PRINT_COROUTINE_ENTRY_EXIT
 if DNS_MULTICAST_LOOPBACK:
@@ -123,6 +127,8 @@ class MyMapper(JSONMapper):
 
     def __init__(self):
         self.id_ = 0
+        self.last_dedupe_rotation = time()
+        self.deduplicate = set()
         return
     
     @property
@@ -133,6 +139,7 @@ class MyMapper(JSONMapper):
     def filter(self, packet):
         if not JSONMapper.filter(self, packet):
             return False
+
         message = packet.field('response_message')[1]
         if message.rcode() == rcode.NXDOMAIN:
             return True
@@ -140,6 +147,18 @@ class MyMapper(JSONMapper):
             return False
         if message.question[0].rdtype not in tuple( rset.rdtype for rset in message.answer ):
             return False
+
+        # Rudimentary deduplication such that a qname + rdtype is emitted no more than
+        # once every DEDUPLICATION_SECONDS.
+        now = time()
+        if self.last_dedupe_rotation < (now - DNSTAP_DEDUPLICATION_SECONDS):
+            self.last_dedupe_rotation = now
+            self.deduplicate = set()
+        query = ( message.question[0].name.to_text().lower(), message.question[0].rdtype )
+        if query in self.deduplicate:
+            return False
+        self.deduplicate.add( query )
+        
         return True
     
     def map_fields(self, packet):
