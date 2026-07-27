@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019 by Fred Morris Tacoma WA
+# Copyright (c) 2019, 2026 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,8 +48,23 @@ class IpAddressField(PbBytesField):
         return str(x)
 
 class DnsMessageField(PbBytesField):
+    """A DNS message.
+    
+    Returned as a dnspython dns.message.Message.
+    
+    include_raw If True, then instead of returning just the Message, a tuple of
+                (message, wire_data) is returned.
+    """
+    
+    def __init__(self, name, include_raw=False, **kwargs):
+        PbBytesField.__init__(self, name, **kwargs)
+        self.include_raw = include_raw
+        return
+    
     def m2i(self,pkt,s):
-        return dns.message.from_wire(s)
+        self.wire_message = s
+        message = dns.message.from_wire(s)
+        return self.include_raw and (message, s) or message
     
     @staticmethod
     def answer(msg):
@@ -61,6 +76,8 @@ class DnsMessageField(PbBytesField):
         return ''
     
     def i2h(self,pkt,x):
+        if self.include_raw:
+            x = x[0]
         return '< status={} question=<{}> answer=<{}> |>'.format(
                     dns.rcode.to_text(x.rcode()), x.question[0], self.answer(x) )
 
@@ -109,11 +126,11 @@ class Message(Protobuf):
             PbUInt32Field("response_port", id=7),
             PbUInt64Field("query_time_sec", id=8),
             PbFixed32Field("query_time_nsec", id=9),
-            DnsMessageField("query_message", id=10),
+            DnsMessageField("query_message", id=10, include_raw=True),
             PbAnyField("query_zone", id=11),
             PbUInt64Field("response_time_sec", id=12),
             PbFixed32Field("response_time_nsec", id=13),
-            DnsMessageField("response_message", id=14)
+            DnsMessageField("response_message", id=14, include_raw=True)
         ]
 
 class Dnstap(Protobuf):
