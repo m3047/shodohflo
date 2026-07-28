@@ -604,14 +604,15 @@ class JSONMapper(object):
                         continue
                     try:
                         svcb_handled = False
-                        if rr.priority:
-                            targets.append( rr.target.to_text().lower() )
+                        svcb_target = rr.target.to_text().lower()
+                        if rr.priority and svcb_target and svcb_target != '.':
+                            targets.append( svcb_target )
                             svcb_handled = True
                     except Exception:
                         pass
                     if scvb_handled:
                         continue
-                    if not self.warned_svcb:
+                    if not self.warned_svcb and not (hasattr( rr, 'priority' ) and hasattr( rr, 'target' )):
                         self.warned_svcb = True
                         logging.warning('dnspython implementation of SVCB not supported. rdata type: {}'.format(rrset[0].__class__.__name__))
                 if targets:
@@ -621,7 +622,7 @@ class JSONMapper(object):
 
         # Follow the question (CNAMEs & SVCBs) to an answer.
         #
-        # There are two scenarios to be handled:
+        # There are two aberrant scenarios to be handled:
         #
         # 1) CNAMEs all the way down.
         #
