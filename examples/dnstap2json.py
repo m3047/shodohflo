@@ -56,7 +56,13 @@ agents/configuration_sample.py.
 
 Each frame is written as a one line binary string, e.g.:
 
-    b'\n\x06athena\x12\x0eBIND 9.12.3-P1r\x8b\x04\x08\x06\x10\x01\x18\x01"\x04\n\x00...'
+    b'\\n\\x06athena\\x12\\x0eBIND 9.12.3-P1r\\x8b\\x04\\x08\\x06\\x10\\x01\\x18\\x01"\\x04\\n\\x00...'
+    
+NOTE: Datagrams. The pickled data is necessarily larger than the raw frame. A given DNS response
+is limited to the maximum size of a datagram, which is 64K. A Dnstap frame contains other things.
+Frags. Frags used to be ok, but they were never ok. Here we are again with frags. Your firewall
+may drop frags. TLDR: on loopback your stack probably supports full 64K jumbos, elsewhere not so
+much. If this matters to you why don't you fix it and send a PR, eh?
     
 If instead of specifying a unix-socket you specify a file name, then the file will be
 opened and read as though it was output as a result of configuring DNSTAP_CHANNEL.
@@ -595,7 +601,17 @@ class JSONMapper(object):
                         else:
                             if svcb.target and svcb.target != '.':
                                 targets.append(svcb.target.lower())
-                    elif not self.warned_svcb:
+                        continue
+                    try:
+                        svcb_handled = False
+                        if rr.priority:
+                            targets.append( rr.target.to_text().lower() )
+                            svcb_handled = True
+                    except Exception:
+                        pass
+                    if scvb_handled:
+                        continue
+                    if not self.warned_svcb:
                         self.warned_svcb = True
                         logging.warning('dnspython implementation of SVCB not supported. rdata type: {}'.format(rrset[0].__class__.__name__))
                 if targets:
