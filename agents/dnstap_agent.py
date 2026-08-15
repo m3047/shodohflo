@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2019-2025 by Fred Morris Tacoma WA
+# Copyright (c) 2019-2026 by Fred Morris Tacoma WA
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,21 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DNS Agent.
+"""Dnstap Agent producing UDP Datagrams
+
+The single-minded end goal of this program is to associate an actual queried-for
+name (intent) with the resulting IP addresses. Rules are broken.
 
 REQUIRES PYTHON 3.6 OR BETTER
 
 Command Line:
 ------------
 
-    dnstap_agent.py <unix-socket> {<dest-host>:<port>} {interface-address}
+    dnstap2json.py [<unix-socket>|<file-name>] {<dest-host>:<port> {interface-address}}
     
 (Line oriented) JSON is written with each line terminated with '\\n'.
 
 Arguments:
 
-    <unix-socket> is required, and is the unix domain socket location to
-        which Dnstap data is being written.
+    <unix-socket> is the unix domain socket location from which Dnstap data is being read.
+    <file-name> is the name of a file from which Dnstap data can be replayed.
+
+    Either <unix-socket> or <file-name> is required.
+    
     <dest-host> and <port> are optional (although if supplied both are required)
         and specify the receiving end of the stream of UDP packets. If not supplied,
         the JSON is written to stdout.
@@ -44,7 +50,22 @@ send such messages. The expected specification for BIND in named.conf is:
     dnstap { client response; };
     dnstap-output unix "/tmp/dnstap";
 
-Leverages / subclasses ../examples/dnstap2json.py
+Leverages / subclasses: ../examples/dnstap2json.py
+
+Backfill
+--------
+
+July 2026: This version attempts to deal with pathologies around (near) simultaneous
+A / AAAA / HTTPS queries which we will not discuss here (contact me if you really want
+it -- FWM) however several things have changed compared to previous versions:
+
+* SVCB / HTTPS records are processed
+* forward and reverse caches are kept with very short (seconds) lifetimes
+* CNAMEs are followed (in cache) both backwards and forwards
+* CNAMEs are followed across query types
+
+Ultimately the tentative goal is something like treating SVCB targets similarly to
+CNAME rdata, but more field experience is needed.
 
 JSON Data Format
 ----------------
@@ -54,11 +75,14 @@ The JSON contains a dictionary with the following fields:
     id:       A monotonically increasing serial number for the datagram, reset to zero
               on restart of the Dnstap agent.
     chain:    A list containing the reversed CNAME chain.
-    qtype:    The query type, either "A" or "AAAA".
+    bkf:      Backfill. A count of the CNAMEs / SVCB records which were backchained
+              from the query name. 0 means that the rightmost FQDN in the chain is the
+              query name.
+    qtype:    The query type: "A", "AAAA", "HTTPS"...
     client:   The address from which the query was sent.
     status:   A status code string, either "NOERROR" or "NXDOMAIN".
     
-Additionally when the status is "NOERROR", an additional field is provided:
+Additionally when the status is "NOERROR", an additional field is potentially provided:
 
     address:  The address or "end" of the CNAME chain; both IPv4 and IPv6 are supported.
 
@@ -68,7 +92,7 @@ to explicitly test for both and to ignore any unexpected values.
 Unlike dnstap2json (on which this is based) the chain is reversed and internal elements
 are not ellipsized when the length of the chain exceeds an internal conservative MTU
 (dnstap2json.JSONMapper.MAX_BLOB). This can lead to fragmentation of the UDP packets; be
-prepared to accept and reassemble UDP frags.
+prepared to accept and reassemble UDP frags if you don't use jumbos.
 """
 
 import sys
@@ -82,7 +106,7 @@ import dns.rdatatype as rdatatype
 import dns.rcode as rcode
 
 import dnstap2json
-from dnstap2json import main, JSONMapper, FieldMapping
+from dnstap2json import copyright_2026_fred_morris_consulting_tacoma_wa_usa, JSONMapper, FieldMapping
 
 SOCKET_ADDRESS = '/tmp/dnstap'
 LOG_LEVEL = None
@@ -92,6 +116,7 @@ PRINT_COROUTINE_ENTRY_EXIT = None
 DNS_CHANNEL = None
 DNS_MULTICAST_LOOPBACK = None
 DNS_MULTICAST_TTL = None
+DNSTAP_CHANNEL = None
 
 EXTENDED_CHAIN_LOGGING = False
 DNSTAP_EXIT_ON_PERSISTENT_FAILURE = True
@@ -110,6 +135,8 @@ if DNS_MULTICAST_LOOPBACK:
     dnstap2json.MULTICAST_LOOPBACK = DNS_MULTICAST_LOOPBACK
 if DNS_MULTICAST_TTL:
     dnstap2json.MULTICAST_TTL = DNS_MULTICAST_TTL
+if DNSTAP_CHANNEL:
+    dnstap2json.DNSTAP_CHANNEL = DNSTAP_CHANNEL
 
 class MyMapper(JSONMapper):
 
@@ -117,15 +144,18 @@ class MyMapper(JSONMapper):
     MAX_BLOB = 65535
     
     FIELDS = (
-            FieldMapping( 'chain',  lambda self,p: self.build_resolution_chain(p) ),
+            FieldMapping( 'chain',  lambda self,p: self.build_resolution_chain(p), ['bkf'] ),
             FieldMapping( 'address',lambda self,p: None ),
             FieldMapping( 'client', lambda self,p: str(p.field('query_address')[1]) ),
-            FieldMapping( 'qtype',  lambda self,p: rdatatype.to_text(p.field('response_message')[1].question[0].rdtype) ),
-            FieldMapping( 'status', lambda self,p: rcode.to_text(p.field('response_message')[1].rcode()) ),
+            FieldMapping( 'qtype',  lambda self,p: rdatatype.to_text(p.field('response_message')[1][0].question[0].rdtype) ),
+            FieldMapping( 'status', lambda self,p: rcode.to_text(p.field('response_message')[1][0].rcode()) ),
             FieldMapping( 'id',     lambda self,p: self.id )
         )
+    
+    ADDRESS_TYPES = { rdatatype.A, rdatatype.AAAA }
 
     def __init__(self):
+        JSONMapper.__init__(self)
         self.id_ = 0
         self.last_dedupe_rotation = time()
         self.deduplicate = set()
@@ -140,12 +170,10 @@ class MyMapper(JSONMapper):
         if not JSONMapper.filter(self, packet):
             return False
 
-        message = packet.field('response_message')[1]
+        message = packet.field('response_message')[1][0]
         if message.rcode() == rcode.NXDOMAIN:
             return True
         if not len(message.answer):
-            return False
-        if message.question[0].rdtype not in tuple( rset.rdtype for rset in message.answer ):
             return False
 
         # Rudimentary deduplication such that a qname + rdtype is emitted no more than
@@ -176,32 +204,21 @@ class MyMapper(JSONMapper):
                 del data[k]
 
         chain = data['chain']
-        if packet.field('response_message')[1].rcode() == rcode.NOERROR:
-            addresses = chain.pop()
-            # TODO: This is paranoid integrity checking which can possibly be removed (or
-            #       improved) at some point in the future.
+        addresses = None
+        if (  packet.field('response_message')[1][0].rcode() == rcode.NOERROR
+           ):
             try:
-                for addr in addresses:
+                # Integrity checking.
+                for addr in chain[-1]:
                     ignore = ip_address(addr)
+                # The point of the exercise.
+                addresses = chain.pop()
             except:
-                if EXTENDED_CHAIN_LOGGING:
-                    logging.info('Invalid address "{}" ({}) {} {}\n  {}'.format(
-                        addr, data['qtype'], chain, addresses,
-                        { '{} ({})'.format(rrset.name.to_text().lower(), rdatatype.to_text(rrset.rdtype)):
-                            [ rr.to_text().lower() for rr in rrset ]
-                          for rrset in packet.field('response_message')[1].answer
-                        }
-                    ))
-                else:
-                    logging.info('Invalid address "{}" ({}) {} {}'.format(addr, data['qtype'], chain, addresses))
-                self.id_ -= 1
-                return
+                pass
         else:
             addresses = None
         chain.reverse()
-        for i in range(len(chain)):
-            chain[i] = chain[i][0]
-        
+       
         # This is the outcome for e.g. NXDOMAIN.
         if addresses is None:
             yield data
@@ -226,4 +243,4 @@ if __name__ == '__main__':
         port = DNS_CHANNEL.get('port', None)
         interface = DNS_CHANNEL.get('send_interface', None)
         
-    main(MyMapper, SOCKET_ADDRESS, recipient, port, interface)
+    copyright_2026_fred_morris_consulting_tacoma_wa_usa(MyMapper, SOCKET_ADDRESS, recipient, port, interface)
