@@ -1,20 +1,19 @@
-# Used only by dns_agent.py
-SOCKET_ADDRESS = '/tmp/dnstap'
+# Used only by dnstap_agent.py
+# Default:
+#SOCKET_ADDRESS = '/tmp/dnstap'
+# In order to use the command line:
+#SOCKET_ADDRESS = None
 
 REDIS_SERVER = 'localhost'
-# WARNING! Redis translation of hostnames to addresses using DNS is unreliable
-# because it calls socket.getaddrinfo() which in turn may exhibit incorrect case
-# sensitivity. DNS is not supposed to be case sensitive.
-#
 # If you want to use hostnames and DNS, then you may want to set USE_DNSPTYHON
 # to True. Of course, dnspython has to be installed. This isn't an issue with
-# the DNS agent but the PCAP agent has no intrinsic dependency on it.
+# the DNS agents but the PCAP agent has no intrinsic dependency on it.
 USE_DNSPYTHON = False
 
 import logging
 # Set this to a logging level to change it from the default of WARN.
 # LOG_LEVEL = logging.INFO
-LOG_LEVEL = None
+# LOG_LEVEL = None
 
 # dnstap_agent: If True, the entirety of the ANSWER section of the DNS response is
 # logged when an invalid address is encountered. Can be useful for debugging, but is
@@ -43,7 +42,7 @@ DNSTAP_STATS = None
 # Strings to ignore in DNS traffic. Should be lowercased. Intended use is for stems,
 # but bear in mind that because of seach lists if it doesn't find for example
 # example.com, system will probably also try example.com.com, etc.
-IGNORE_DNS = None
+# IGNORE_DNS = None
 # Ignore anything containing test.example.com, such as server.test.example.com,
 # server.test.example.com.example.com, server.test.example.com.com...:
 # IGNORE_DNS = { 'test.example.com' }
@@ -60,7 +59,7 @@ IGNORE_DNS = None
 
 # For fine grained, intelligent control based on ports, you will want to define
 # NETWORK_ENUMERATION and FLOW_MAPPING together. See the documentation in
-# shodohflo.pcap_config for details beyond what is given here.
+# the shodohflo.pcap_config module for details beyond what is given here.
 #
 # The defaults, shown here, capture all flows attempting to identify the client
 # and server sides of the flow based on the heuristic that the lower port number
@@ -95,7 +94,7 @@ IGNORE_DNS = None
 # advanced use cases can be addressed by setting parameters here.
 #
 # Use the command line arguments.
-DNS_CHANNEL = None
+# DNS_CHANNEL = None
 # Unicast datagrams are sent to (unicast) address 10.0.1.253, port 3053.
 # DNS_CHANNEL = dict(recipient='10.0.1.253', port=3053)
 # Assuming that 10.0.3.55 is bound to the eth1 network interface on the sender and
@@ -111,6 +110,9 @@ DNS_CHANNEL = None
 #        recipient='233.252.0.229', port=3053,
 #        send_interface='10.0.3.55', recv_interface='10.0.4.76'
 #    )
+# Raw Dnstap data can be written to a UDP destination. The captured data can be
+# replayed from a file. Used by dnstap_agent.
+# DNSTAP_CHANNEL = None
 
 # The following apply only to multicast. Defaults are shown.
 # Controls whether or not the datagrams loop back to the sender (on the same interface).
