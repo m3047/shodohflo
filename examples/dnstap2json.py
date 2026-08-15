@@ -62,7 +62,7 @@ NOTE: Datagrams. The pickled data is necessarily larger than the raw frame. A gi
 is limited to the maximum size of a datagram, which is 64K. A Dnstap frame contains other things.
 Frags. Frags used to be ok, but they were never ok. Here we are again with frags. Your firewall
 may drop frags. TLDR: on loopback your stack probably supports full 64K jumbos, elsewhere not so
-much. If this matters to you why don't you fix it and send a PR, eh?
+much.
     
 If instead of specifying a unix-socket you specify a file name, then the file will be
 opened and read as though it was output as a result of configuring DNSTAP_CHANNEL.
@@ -162,11 +162,16 @@ PRINT_COROUTINE_ENTRY_EXIT = None
 # Similar to the foregoing, but always set to something valid.
 STATISTICS_PRINTER = logging.info
 # Do we want stats at all? If so, set it to the number of seconds between reports.
+#STATS = None
 STATS = 60
 
+# Both the UDP + JSON and the raw Dnstap output inherit the setting of these two parameters.
+# They only apply if multicast is in use, which is likely to seldom occur for the raw case.
+# These parameters are used by UniversalWriter.
 MULTICAST_LOOPBACK = 1
 MULTICAST_TTL = 1
 
+# Raw, essentially picked, Dnstap output which can be replayed from a saved file.
 # See DNS_CHANNEL in ../agents/configuration_sample.py
 DNSTAP_CHANNEL = None
 #DNSTAP_CHANNEL = dict(
@@ -249,10 +254,10 @@ class SVCBTypeRdata(object):
     
     Q: Does this mean you're thinking about writing your own DNS packet
        processing utility?
-    A: I hope not.
+    A: I pray not.
     """
     LOGGING = logging.warning
-        
+    
     SVC_PARAM_KEYS = (
         (   0,  'mandatory',    SVCBParamDeserializers.smallints ),
         (   1,  'alpn',         SVCBParamDeserializers.labels ),
@@ -408,13 +413,12 @@ class CNAMEMapping(object):
     
     NOTE: We patch this into the JSONMapper when it is allocated in DnsTap.__init__().
     
-    CACHE_SIZE should be sized to maintain perhaps the last minute of context maximum, 
+    MAX_CACHE should be sized to maintain perhaps the last minute of context maximum, 
     if what you're really trying to do is fix short-circuit (6+4) lookups rather than
     general enhancement (I don't recommend this).
     """
     
-    #CACHE_TIME = 15     # seconds
-    CACHE_TIME = 5     # seconds
+    CACHE_TIME = 15    # seconds
     MAX_CACHE = 1000    # Oughta be enough for anybody...
     
     def __init__(self):
@@ -440,6 +444,14 @@ class CNAMEMapping(object):
                 if fqdn in self.reverse:
                     del self.reverse[ fqdn ]
         return
+    
+    def __str__(self):
+        """Amateurish for anything except debugging."""
+        return 'Mappings: {}\nForward:\n    {}\nReverse:\n    {}'.format(
+                        len(self.mappings),
+                        '\n    '.join( '{:<30s} {}'.format(k,v) for k,v in sorted(self.forward.items()) ),
+                        '\n    '.join( '{:<30s} {}'.format(k,v) for k,v in sorted(self.reverse.items()) )
+                    )
     
 class FieldMapping(object):
     """Maps a JSON name to its value."""
@@ -527,7 +539,7 @@ class JSONMapper(object):
     SVCBTypeRdata.
     
     Consequently I warn once when a SVCB payload is encountered while using a version of
-    dnspython with native support. You can disable this warning by setting
+    dnspython with native but incompatible support. You can disable this warning by setting
     self.warned_svcb = True in your subclass.
     
     SMELL: Sounds kinda backwards that the newer versions aren't supported, but 1) installed
@@ -558,7 +570,8 @@ class JSONMapper(object):
         # inside of field mapping there shouldn't be anything to be concerned about as
         # long as map_fields() is an atomic operation. (Hence, no thread locking.)
         # Even if it breaks all it affects is the logging of which field was being processed
-        # at the time.
+        # at the time. Bear in mind it should have been logged inside of FieldMapping.__call__()
+        # before it ever gets to the handler in this scope.
         self.field_name = None
         return
     
@@ -575,8 +588,7 @@ class JSONMapper(object):
         queries for CNAMEs.) As a consequence the target generates a separate A / AAAA query.
         I've noticed something similar happening on occasion with dual-stack (A + AAAA) queries
         the e.g. AAAA query will resolve a CNAME chain; then the A record simply queries for the
-        same oname (at the end of the chain) which resolved in the AAAA query. So no reason
-        not to treat them the same.
+        same oname (at the end of the chain) which resolved in the AAAA query.
         """
         response, raw_dns = packet.field('response_message')[1]
         question = response.question[0].name.to_text().lower()
@@ -629,12 +641,16 @@ class JSONMapper(object):
         # 2) The qname short-circuits a CNAME chain, which we recover from previously
         #    seen data.        
         names = [ question ]
-        seen = set(names)
+        seen = set()
         chain = [ [question] ]
         
+        #print(self.mapping)
+
         # Was this a short circuit query? Backfill.
         fqdn = question
         while fqdn in self.mapping.reverse:
+            if fqdn in seen:
+                break
             seen.add( fqdn )
             parent = self.mapping.reverse[ fqdn ][0]
             chain.insert( 0, [ parent ] )
@@ -899,6 +915,7 @@ class DnsTap(Consumer):
             timer = self.consume_stats.start_timer()
 
         message = dnstap.Dnstap(frame).field('message')[1]
+        #print( message.field('response_message')[1][0].question )
 
         if self.raw_writer and self.mapper.filter_raw( message ):
             self.raw_writer.write( repr( frame ) + '\n', STATS and self.raw_backlog.start_timer() or None )
@@ -950,7 +967,6 @@ class ReplayServer(object):
     ENOUGH_BUFFERING = 10
     FRAME_START = { "b'", 'b"' }
     MAX_REPLAY_PER_SEC = 20
-    #MAX_REPLAY_PER_SEC = 10
     
     @staticmethod
     def is_replay_file( filename ):
@@ -1192,6 +1208,8 @@ def copyright_2026_fred_morris_consulting_tacoma_wa_usa(JSONMapper_class=JSONMap
             socket_address, 
             destination or 'STDOUT'
         )       )
+    if DNSTAP_CHANNEL:
+        logging.info('    DNSTAP_CHANNEL: {}  {} {}'.format(raw_destination, raw_interface and 'Interface:' or '', raw_interface or ''))
 
     main_args = (socket_address, destination, interface, JSONMapper_class, raw_destination, raw_interface)
     if PYTHON_IS_311:
@@ -1204,4 +1222,4 @@ def copyright_2026_fred_morris_consulting_tacoma_wa_usa(JSONMapper_class=JSONMap
 main = copyright_2026_fred_morris_consulting_tacoma_wa_usa
 if __name__ == '__main__':
     copyright_2026_fred_morris_consulting_tacoma_wa_usa()
-    
+
