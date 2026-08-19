@@ -53,9 +53,9 @@ presume it is also ordered, didn't want to mess that up.
 Things in the monitored environment have changed, other things which are theoretically changing... not so much or so fast or they're still being
 studied (or mumble).
 
-The purpose which drove me to create `shodohflo` was, is, and remains: ___track what FQDNs resolve to in a fashion which is
+From the perspective of DNS, what drove me to create ShoDoHFlo was, is, and remains: ___track what FQDNs resolve to in a fashion which is
 easily consumable via automation___. Other things were, and remain, important: ___what client requested resolution for a
-particular FQDN?___ (because you can correlate it with netflows).
+particular FQDN?___ (because you can correlate it with netflows)
 
 These two objectives were largely synonymous, but changes in the environment are straining that equivalence. In particular:
 
@@ -81,6 +81,8 @@ the promise, but it's not what's seen in the wild today. Basically `HTTPS` recor
 performance to avoid some small actual HTTP overhead. Still they do exist, and they're being queried for, and it
 loads the cache up, etc.
 
+`dnstap2json` includes an implementation of `SVCB` to support older versions of dnspython, work is ongoing.
+
 I welcome your thoughts.
 
 ## _Capture_ and _Replay_: New Functionality to Support Your Workflow
@@ -95,4 +97,45 @@ This is intended primarily for development and debugging, although I won't be su
 
 ## The Workflow
 
-***rock and roll!***
+`dnstap2json` and `dnstap_agent` are ___intended to be useful from initial Dnstap tasting, into production, until you truly need
+something more performant (which might be longer than you think)___
+
+_This is something of a biased random walk, two steps forward and one step back..._
+
+**Tasting** You set up _BIND_ or _Unbound_ with Dnstap enabled, and answer a few basic questions: Is it working? What
+does the data actually look like?
+
+```
+cd examples; cp configuration_sample.py configuration.py; ./dnstap2json.py /tmp/dnstap
+```
+
+...assuming that `/tmp/dnstap` is the unix socket Dnstap data is being written to.
+
+**Customizing** You have a use in mind, and the data coming out of either `dnstap2json` or `dnstap_agent` isn't what you need.
+Maybe you want something besides JSON. The intention is that you can accomplish this by subclassing `JSONMapper` and overriding
+parts of it, or by overriding `Dnstap.consume()`. `agents/dnstap_agent.py` subclasses `examples/dnstap2json.py`, look there
+for a sense of the lift.
+
+**Operationalizing** You don't have a use in mind, but you really want to get the data into some kind of store, why not
+Redis? Maybe a proof of concept. Look around in `agents/`: set up `dnstap_agent` and `dns_agent`, and you can get it into your Redis database.
+Maybe you'll want to set up some instances of `pcap_agent` listening on select interfaces so you can correlate DNS
+activity with netflows.
+
+**Pub-Sub** Setting up `dnstap_agent` and `dns_agent` in the previous section relies on _UDP datagrams_, a form of message delivery
+which operates at the level of the network stack. It's _connectionless_, and supports _many senders to one receiver_
+as the default. So you can send the output from multiple Dnstap sources / servers, to a central collection point.
+`dnstap_agent` also supports _multicast datagrams_ a special addressing scheme which enables _many senders
+**and many** receivers_... at the network level! I know it sounds incredible, but it's true!
+
+You're also welcome, and encouraged, to point it at your own automated data pipelines; maybe _multicast_ will
+inspire you.
+
+**What Else?** ShoDoHFlo is part of "Poor Fred's SIEM", a notion which also includes [Rear View RPZ](https://github.com/m3047/rear_view_rpz)
+and [RKVDNS](https://github.com/m3047/rkvdns). If you're to this point I've got additional docs and whatnot if you reach out and introduce yourself.
+
+**The Loop** At some point you're going to get into a testing situation related to something going on in production.
+Odds are this will be related in some fashion to the inputs, or particularly the Dnstap data for our purposes here.
+`JSONMapper.filter_raw()` makes it possible to select Dnstap frames matching whatever criteria are of interest
+so that they can be written to a different UDP socket, where presumably something listening can write them to a
+file or database. That file can then be replayed by `dnstap2json` (or `dnstap_agent`) to test code operation within
+`dnstap2json`, or to generate test data for some downstream process.
