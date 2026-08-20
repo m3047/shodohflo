@@ -218,6 +218,8 @@ class MyMapper(JSONMapper):
         else:
             addresses = None
         chain.reverse()
+        for i in range(len(chain)):
+            chain[i] = chain[i][0]
        
         # This is the outcome for e.g. NXDOMAIN.
         if addresses is None:
