@@ -145,6 +145,8 @@ if PYTHON_IS_311:
 else:
     from concurrent.futures import CancelledError
 
+GLOBAL_EXIT_EXCEPTIONS = (CancelledError, KeyboardInterrupt)
+
 # Number of seconds before we commit suicide after a failure to write with no bright
 # future on the horizon.
 WRITE_FAILURE_WINDOW = 10
@@ -475,7 +477,7 @@ class FieldMapping(object):
     def __call__(self, mapping, mapper, packet):
         """Maps the extracted value.
         
-        Traps and warns on KeyError.
+        Traps and warns on errors.
         """
         try:
             result = self.extract(mapper, packet)
@@ -484,7 +486,9 @@ class FieldMapping(object):
             else:
                 for i,k in enumerate( self.additional ):
                     mapping[k] = result[i]
-        except KeyError as e:
+        except GLOBAL_EXIT_EXCEPTIONS as e:
+            raise e
+        except Exception as e:
             logging.warning("Field extraction error for {}: {}: {}\n{}".format(
                 self.name, e.__class__.__name__, e, traceback.format_exc(limit=4))
             )
@@ -933,7 +937,7 @@ class DnsTap(Consumer):
                 self.writer.write( json.dumps(data) + "\n",
                                 STATS and self.backlog.start_timer() or None
                             )
-        except (KeyboardInterrupt, CancelledError) as e:
+        except GLOBAL_EXIT_EXCEPTIONS as e:
             raise e
         except Exception as e:
             logging.error('Internal error mapping field "{}": {} {}'.format(self.mapper.field_name, e.__class__.__name__, e))
@@ -1037,7 +1041,7 @@ async def close_tasks(tasks):
     all_tasks.cancel()
     try:
         await all_tasks
-    except (CancelledError, KeyboardInterrupt):
+    except GLOBAL_EXIT_EXCEPTIONS:
         pass
     return
 
