@@ -201,7 +201,7 @@ class DictOfCounters(dict):
 class RedisHandler(RedisBaseHandler):
     """Handles calls to Redis so that they can be run in a different thread."""
 
-    ADDRESS_RECORDS = { 'A', 'AAAA' }
+    ADDRESS_RECORDS = { 'A', 'AAAA', 'SVCB', 'TYPE64', 'TYPE65' }
     
     def __init__(self, event_loop, ttl_grace, statistics):
         RedisBaseHandler.__init__(self, event_loop, ttl_grace)
@@ -405,6 +405,11 @@ class Consumer(asyncio.DatagramProtocol):
             if 'address' in message:
                 message[field] = ip_address(message[field])
                 chain.append(str(message[field]))
+            else:
+                # Silently drop CNAME-only (non-terminal) replies, they will be picked up
+                # by backward or forward fill, and we'll see them when we get a message with
+                # the actual answer.
+                return
             field = 'client'
             message[field] = str(ip_address(message[field]))
             field = 'status'
