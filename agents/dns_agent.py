@@ -311,8 +311,7 @@ class RedisHandler(RedisBaseHandler):
             backlog_timer = self.backlog.start_timer()
         else:
             backlog_timer = None
-        args = (backlog_timer,) + args
-        RedisBaseHandler.submit(self, func, *args)
+        RedisBaseHandler.submit(self, func, backlog_timer, *args)
         return
     
 class Consumer(asyncio.DatagramProtocol):
