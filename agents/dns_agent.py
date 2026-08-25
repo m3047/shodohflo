@@ -397,7 +397,7 @@ class Consumer(asyncio.DatagramProtocol):
             for i in range(len(chain)):
                 fqdn = chain[i]
                 if fqdn[-1] != '.':
-                    raise TypeError('FQDN "{}" missing trailing "."'.format(fqdn))
+                    raise TypeError('FQDN "{}" ({}) missing trailing "."'.format(fqdn, message['qtype']))
                 chain[i] = fqdn.lower()
             chain.reverse()
             field = 'address'
