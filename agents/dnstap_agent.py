@@ -218,12 +218,17 @@ class MyMapper(JSONMapper):
         else:
             addresses = None
         chain.reverse()
+        # Interim fix: skip any fqdn which doesn't end with a dot.
         for i in range(len(chain)):
+            good = False
             for fqdn in chain[i]:
                 if not fqdn.endswith('.'):
                     continue
                 chain[i] = fqdn
+                good = True
                 break
+            if not good:
+                return
         
         # This is the outcome for e.g. NXDOMAIN.
         if addresses is None:
