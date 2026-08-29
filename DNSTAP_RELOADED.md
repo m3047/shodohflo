@@ -125,7 +125,8 @@ activity with netflows.
 which operates at the level of the network stack. It's _connectionless_, and supports _many senders to one receiver_
 as the default. So you can send the output from multiple Dnstap sources / servers, to a central collection point.
 `dnstap_agent` also supports _multicast datagrams_ a special addressing scheme which enables _many senders
-**and many** receivers_... at the network level! I know it sounds incredible, but it's true!
+**and many** receivers_... at the network level! I know it sounds incredible, but it's true! I apologize for the
+sarcasm.
 
 You're also welcome, and encouraged, to point it at your own automated data pipelines; maybe _multicast_ will
 inspire you.
