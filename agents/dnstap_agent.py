@@ -203,9 +203,11 @@ class MyMapper(JSONMapper):
             if v is None:
                 del data[k]
 
+        message = packet.field('response_message')[1][0]
+                
         chain = data['chain']
         addresses = None
-        if (  packet.field('response_message')[1][0].rcode() == rcode.NOERROR
+        if (  message.rcode() == rcode.NOERROR
            ):
             try:
                 # Integrity checking.
@@ -218,16 +220,22 @@ class MyMapper(JSONMapper):
         else:
             addresses = None
         chain.reverse()
-        # Interim fix: skip any fqdn which doesn't end with a dot.
+        # Paranoid check for any fqdn which doesn't end with a dot. (We need to
+        # dereference the elements of the chain anyway.)
         for i in range(len(chain)):
             good = False
             for fqdn in chain[i]:
                 if not fqdn.endswith('.'):
+                    logging.warning('Invalid FQDN: {} for query {} {}'.format(
+                        fqdn, message.question[0].name.to_text().lower(), message.question[0].rdtype)
+                    )
                     continue
-                chain[i] = fqdn
                 good = True
                 break
-            if not good:
+            if good:
+                chain[i] = fqdn
+            else:
+                # There is nothing good, chain is broken.
                 return
         
         # This is the outcome for e.g. NXDOMAIN.
