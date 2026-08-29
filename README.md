@@ -4,6 +4,10 @@ There's a perfectly good _dnstap_ dissector here. You'll find it in `shodohflo/`
 
 Look in `app/` for screenshots from the web reporting interface.
 
+**Dnstap Reloaded (July 2026):** Major work has been done (collectively) on `exampless/dnstap2json.py` as well as on the Dnstap telemetry
+pipeline including `agents/dnstap_agent.py`, `agents/dns_agent.py`, and [the Rear View RPZ agent](https://github.com/m3047/rear_view_rpz).
+___See___ [DNSTAP_RELOADED.md](DNSTAP_RELOADED.md).
+
 # shodohflo
 
 This a DNS and netflow (IP address) correlator. _DNS_ is the service which turns a web site name into an address which your computer can connect to (it also does other things, and has indirection). A _netflow_ is the observed fact of two computers at different addresses exchanging data. Typically a DNS lookup is done to find the address, and then a connection with the address is created and data is exchanged. It's possible for an application to explicitly connect with an address without performing a DNS lookup.
