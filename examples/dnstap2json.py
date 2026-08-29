@@ -409,7 +409,13 @@ class SVCBTypeRdata(object):
                 self.LOGGING('Bad SVCB rdata: {}: {}'.format(e.__class__.__name__, e))
             self.error = e
         return
-    
+
+class InvalidFQDN(Exception):
+    pass
+
+class InvalidAddress(Exception):
+    pass
+
 class CNAMEMapping(object):
     """A cache of recent CNAME / SVCB mappings.
     
@@ -422,14 +428,37 @@ class CNAMEMapping(object):
     
     CACHE_TIME = 15    # seconds
     MAX_CACHE = 1000    # Oughta be enough for anybody...
+    ADDRESS_TYPES = { rdatatype.A, rdatatype.AAAA }
     
     def __init__(self):
         self.forward = {}
         self.reverse = {}
         self.mappings = deque()
         return
+    
+    @staticmethod
+    def valid_address( address, rdtype ):
+        if   rdtype == rdatatype.A:
+            return IPv4Address( address )
+        elif rdtype == rdatatype.AAAA:
+            return IPv6Address( address )
+        raise InvalidAddress('Invalid {} address: {}'.format(rdatatype.to_text(rdtype), address))
+    
+    @staticmethod
+    def valid_fqdn( fqdn, rdtype ):
+        if (not fqdn.endswith('.')) or ' ' in fqdn:
+            raise InvalidFQDN('Invalid {} FQDN {}'.format(rdatatype.to_text(rdtype), fqdn))
+        return
         
     def add(self, map_from, map_to, rdtype):
+        """Validates the values before adding to the mapping."""
+        self.valid_fqdn( map_from, rdtype )
+        for item in map_to:
+            if rdtype in self.ADDRESS_TYPES:
+                self.valid_address( item, rdtype )
+            else:
+                self.valid_fqdn( item, rdtype )
+        
         now = time()
         self.forward[map_from] = ( map_to, rdtype )
         for fqdn in map_to:
@@ -558,6 +587,7 @@ class JSONMapper(object):
     ACCEPTED_RECORDS = { rdatatype.A, rdatatype.AAAA, 64, 65 }
     SVCB_COMPATIBLE_OR_CNAME = { rdatatype.CNAME, 64, 65 }
     SVCB_COMPATIBLE = { 64, 65 }
+    NOT_SVCB_COMPATIBLE = { rdatatype.A, rdatatype.AAAA, rdatatype.CNAME }
 
     # NOTE: As of (01-Jul-2026) p.field('response_message')[1] is no longer just the deserialized
     #       protobuf, it's now a tuple of (protobuf, raw_dns_packet). See shodohflo.protobuf.dnstap
@@ -603,39 +633,42 @@ class JSONMapper(object):
             return [ [question] ], 0
         
         # Build a mapping of the rrsets.
-        for rrset in response.answer:
-            targets = []
-            if rrset.rdtype in self.SVCB_COMPATIBLE:
-                # TODO: Support for versions of dnspython natively supporting SVCB / HTTPS would go here.
-                for rr in rrset:
-                    if isinstance(rr, rdata.GenericRdata):
-                        svcb = SVCBTypeRdata( raw_dns, rr.data )
-                        if svcb.error:
-                            logging.error('SVCBTypeRdata failed to parse answer for {}: {} {}'.format(
-                                            question, self.error.__class__.__name__, self.error)
-                            )
-                        else:
-                            if svcb.target and svcb.target != '.':
-                                targets.append(svcb.target.lower())
-                        continue
-                    try:
-                        svcb_handled = False
-                        svcb_target = rr.target.to_text().lower()
-                        if rr.priority and svcb_target and svcb_target != '.':
-                            targets.append( svcb_target )
-                            svcb_handled = True
-                    except Exception:
-                        pass
-                    if scvb_handled:
-                        continue
-                    if not self.warned_svcb and not (hasattr( rr, 'priority' ) and hasattr( rr, 'target' )):
-                        self.warned_svcb = True
-                        logging.warning('dnspython implementation of SVCB not supported. rdata type: {}'.format(rrset[0].__class__.__name__))
-                if targets:
-                    self.mapping.add( rrset.name.to_text().lower(), targets, rrset.rdtype )
-            else:
-                self.mapping.add( rrset.name.to_text().lower(), [ rr.to_text().lower() for rr in rrset ], rrset.rdtype )
-
+        try:
+            for rrset in response.answer:
+                targets = []
+                if   rrset.rdtype in self.SVCB_COMPATIBLE:
+                    # TODO: Support for versions of dnspython natively supporting SVCB / HTTPS would go here.
+                    for rr in rrset:
+                        if isinstance(rr, rdata.GenericRdata):
+                            svcb = SVCBTypeRdata( raw_dns, rr.data )
+                            if svcb.error:
+                                logging.error('SVCBTypeRdata failed to parse answer for {}: {} {}'.format(
+                                                question, self.error.__class__.__name__, self.error)
+                                )
+                            else:
+                                if svcb.target and svcb.target != '.':
+                                    targets.append(svcb.target.lower())
+                            continue
+                        try:
+                            svcb_handled = False
+                            svcb_target = rr.target.to_text().lower()
+                            if rr.priority and svcb_target and svcb_target != '.':
+                                targets.append( svcb_target )
+                                svcb_handled = True
+                        except Exception:
+                            pass
+                        if scvb_handled:
+                            continue
+                        if not self.warned_svcb and not (hasattr( rr, 'priority' ) and hasattr( rr, 'target' )):
+                            self.warned_svcb = True
+                            logging.warning('dnspython implementation of SVCB not supported. rdata type: {}'.format(rrset[0].__class__.__name__))
+                    if targets:
+                        self.mapping.add( rrset.name.to_text().lower(), targets, rrset.rdtype )
+                elif  rrset.rdtype in self.NOT_SVCB_COMPATIBLE:
+                    self.mapping.add( rrset.name.to_text().lower(), [ rr.to_text().lower() for rr in rrset ], rrset.rdtype )
+        except (InvalidFQDN, InvalidAddress) as e:
+            raise type(e)('Query {} ({}): {}'.format( question, rdatatype.to_text(qtype), e ))
+        
         # Follow the question (CNAMEs & SVCBs) to an answer.
         #
         # There are two aberrant scenarios to be handled:
