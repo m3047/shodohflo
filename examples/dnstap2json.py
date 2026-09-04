@@ -1210,13 +1210,14 @@ def copyright_2026_fred_morris_consulting_tacoma_wa_usa(JSONMapper_class=JSONMap
         try:
             param = 'recipient'
             recip_addr = ip_address( DNSTAP_CHANNEL.get( 'recipient' ) )
+            raw_interface = DNSTAP_CHANNEL.get( 'send_interface' )
             if recip_addr.is_multicast:
-                if not interface:
-                    print('interface required for multicast', file=sys.stderr)
+                if not raw_interface:
+                    print('raw interface required for multicast', file=sys.stderr)
                     lart()
             else:
-                if interface:
-                    print('interface invalid for unicast', file=sys.stderr)
+                if raw_interface:
+                    print('raw interface invalid for unicast', file=sys.stderr)
                     lart()
             param = 'port'
             port = DNSTAP_CHANNEL.get( 'port' )
@@ -1225,12 +1226,11 @@ def copyright_2026_fred_morris_consulting_tacoma_wa_usa(JSONMapper_class=JSONMap
                 lart()
             raw_destination = '{}:{}'.format(recip_addr, port)
             param = 'send_interface'
-            raw_interface = DNSTAP_CHANNEL.get( 'send_interface' )
             if raw_interface:
                 ignore = ip_address(raw_interface)
         except Exception as e:
             if param == 'send_interface':
-                print('DNSTAP_CHANNEL: specify interface using a bound address', file=sys.stderr)
+                print('DNSTAP_CHANNEL: specify raw interface using a bound address', file=sys.stderr)
             else:
                 print('DNSTAP_CHANNEL {}: {}\n'.format(param, e), file=sys.stderr)
             lart()
