@@ -294,7 +294,8 @@ class SVCBTypeRdata(object):
     def target(self):
         targ = self.target_
         if isinstance(targ, tuple):
-            targ = self.target_ = '.'.join( self.elements[ i+targ[3]+1 ][0] for i in range(targ[4]) )
+            # Leave hex representation after bytes -> str conversion rather than attempting decode.
+            targ = self.target_ = '.'.join( str(self.elements[ i+targ[3]+1 ][0])[2:-1] for i in range(targ[4]) )
         return targ
     
     @property
