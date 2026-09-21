@@ -1,0 +1,30 @@
+[project]
+name = "shodohflo"
+version = "0.1.0"
+description = "A dnstap dissector"
+readme = "README.md"
+license = { "text"= "AGPL-2.0-only" }
+authors = [
+    { name = "Fred Morris", email = "consulting@m3047.net" }
+]
+urls.Repository = "https://github.com/m3047/shodohflo"
+
+requires-python = ">=3.12"
+dependencies = [
+    "asyncio",
+    "ipaddress",
+    "dnspython",
+]
+
+[dependency-groups]
+redis = [
+    "redis",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["shodohflo*"]
+namespaces = false
