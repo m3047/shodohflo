@@ -726,7 +726,7 @@ class JSONMapper(object):
 
         return chain, backfilled
     
-    def filter_raw(self, packet):
+    def filter_raw(self, packet, filtered=None, exc=None):
         """Returns True if the dnstap frame should be written to the raw writer.
         
         We have the ability here to write raw dnstap frames as bytestreams.
@@ -735,10 +735,14 @@ class JSONMapper(object):
         This method is only called if a raw writer is defined. Or in other words, if
         DNSTAP_CHANNEL has been configured.
         
-        The argument is the decoded message, the same as with filter().
+        Parameters:
+            packet      The decoded message, the same as with filter().
+            filtered    If True then the message was selected by filter().
+            exc         If not None, then the exception which was encountered while
+                        processing the message (either filter() or map_fields()).
         """
         # Dump the same frames which we are writing to the output stream.
-        # return self.filter( packet )
+        # return filtered or False
         # Dump all the frames.
         return True
 
@@ -955,28 +959,38 @@ class DnsTap(Consumer):
         message = dnstap.Dnstap(frame).field('message')[1]
         #print( message.field('response_message')[1][0].question )
 
-        if self.raw_writer and self.mapper.filter_raw( message ):
-            self.raw_writer.write( repr( frame ) + '\n', STATS and self.raw_backlog.start_timer() or None )
-            
-        if not self.mapper.filter(message):
-            if STATS:
-                timer.stop()
-            if PRINT_COROUTINE_ENTRY_EXIT:
-                PRINT_COROUTINE_ENTRY_EXIT('END consume')
-            return True
-
         try:
-            for data in self.mapper.map_fields(message):
-                # Actually queues a separate coroutine.
-                self.writer.write( json.dumps(data) + "\n",
-                                STATS and self.backlog.start_timer() or None
-                            )
+            once = True
+            while once:
+                once = False
+
+                self.mapper.field_name = None
+                exc = None
+                filtered = self.mapper.filter(message)
+                if not filtered:
+                    break
+            
+                for data in self.mapper.map_fields(message):
+                    # Actually queues a separate coroutine.
+                    self.writer.write( json.dumps(data) + "\n",
+                                    STATS and self.backlog.start_timer() or None
+                                )
         except GLOBAL_EXIT_EXCEPTIONS as e:
             raise e
         except Exception as e:
+            exc = e
             logging.error('Internal error mapping field "{}": {} {}'.format(self.mapper.field_name, e.__class__.__name__, e))
             logging.warning(traceback.format_exc(limit=3))
-        
+
+        try:
+            if self.raw_writer and self.mapper.filter_raw( message, filtered, exc ):
+                self.raw_writer.write( repr( frame ) + '\n', STATS and self.raw_backlog.start_timer() or None )
+        except GLOBAL_EXIT_EXCEPTIONS as e:
+            raise e
+        except Exception as e:
+            logging.error('Internal error in filter_raw() "{}": {} {}'.format(self.mapper.field_name, e.__class__.__name__, e))
+            logging.warning(traceback.format_exc(limit=3))
+            
         if STATS:
             timer.stop()
         if PRINT_COROUTINE_ENTRY_EXIT:
