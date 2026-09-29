@@ -194,6 +194,59 @@ class CountingDict(dict):
             self[k] = 0
         self[k] += v
         return
+
+class Message(dnstap.Message):
+    """Overrides dnstap.Message.fields_desc
+    
+    The reason we do this is to pass include_raw=True in the DnsMessageField definitions.
+    """
+
+    fields_desc = [
+            dnstap.EnumField("type", id=1,
+                      enum=[    'TYPE_AUTH_QUERY',
+                                'TYPE_AUTH_RESPONSE',
+                                'TYPE_RESOLVER_QUERY',
+                                'TYPE_RESOLVER_RESPONSE',
+                                'TYPE_CLIENT_QUERY',
+                                'TYPE_CLIENT_RESPONSE',
+                                'TYPE_FORWARDER_QUERY',
+                                'TYPE_FORWARDER_RESPONSE',
+                                'TYPE_STUB_QUERY',
+                                'TYPE_STUB_RESPONSE',
+                                'TYPE_TOOL_QUERY',
+                                'TYPE_TOOL_RESPONSE'
+                           ]
+                     ),
+            dnstap.EnumField("socket_family", id=2, enum=['SOCKET_FAMILY_INET','SOCKET_FAMILY_INET6']),
+            dnstap.EnumField("socket_protocol", id=3, enum=['SOCKET_PROTOCOL_UDP','SOCKET_PROTOCOL_TCP']),
+            dnstap.IpAddressField("query_address", id=4),
+            dnstap.IpAddressField("response_address", id=5),
+            dnstap.PbUInt32Field("query_port", id=6),
+            dnstap.PbUInt32Field("response_port", id=7),
+            dnstap.PbUInt64Field("query_time_sec", id=8),
+            dnstap.PbFixed32Field("query_time_nsec", id=9),
+            dnstap.DnsMessageField("query_message", id=10, include_raw=True),
+            dnstap.PbAnyField("query_zone", id=11),
+            dnstap.PbUInt64Field("response_time_sec", id=12),
+            dnstap.PbFixed32Field("response_time_nsec", id=13),
+            dnstap.DnsMessageField("response_message", id=14, include_raw=True)
+        ]
+
+class Dnstap(dnstap.Dnstap):
+    """Overrides dnstap.Dnstap.fields_desc
+    
+    The reason we do this is to reference the subclassed version of dnstap.Message.
+    Otherwise it picks up the version in the base class. I resisted the impulse to
+    monkey-patch it.
+    """
+    
+    fields_desc = [
+            dnstap.StringField("identity", id=1),
+            dnstap.StringField("version", id=2),
+            dnstap.PbAnyField("extra", id=3),
+            dnstap.EnumField("type", id=15, enum=['TYPE_MESSAGE']),
+            Message.Field("message", id=14)
+        ]
     
 class SVCBParamDeserializers(object):
     
