@@ -126,11 +126,11 @@ class Message(Protobuf):
             PbUInt32Field("response_port", id=7),
             PbUInt64Field("query_time_sec", id=8),
             PbFixed32Field("query_time_nsec", id=9),
-            DnsMessageField("query_message", id=10, include_raw=True),
+            DnsMessageField("query_message", id=10),
             PbAnyField("query_zone", id=11),
             PbUInt64Field("response_time_sec", id=12),
             PbFixed32Field("response_time_nsec", id=13),
-            DnsMessageField("response_message", id=14, include_raw=True)
+            DnsMessageField("response_message", id=14)
         ]
 
 class Dnstap(Protobuf):
