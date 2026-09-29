@@ -1009,7 +1009,7 @@ class DnsTap(Consumer):
         if STATS:
             timer = self.consume_stats.start_timer()
 
-        message = dnstap.Dnstap(frame).field('message')[1]
+        message = Dnstap(frame).field('message')[1]
         #print( message.field('response_message')[1][0].question )
 
         try:
