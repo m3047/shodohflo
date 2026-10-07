@@ -7,7 +7,7 @@ The rest of this document is divided into three parts:
 
 * General guidance
 * `shodohflo`: the _python_ package
-* ShoDoHFlo: the application
+* ShoDoHFlo: the application, in the real world
 
 ## General Guidance
 
@@ -75,13 +75,14 @@ Other protobuf definitions (see `shodohflo.protobuf.dnstap`) will be accepted. D
 or with the project they're related to; please only submit them to one or the other. Doc pointing to where to
 find them is also fine, it can go in `__init__.py` or in a `README.md`.
 
-## ShoDoHFlo: the application
+## ShoDoHFlo in the real world
 
-* There is no reason to have only one UI.
+* There is no reason to have only one interface.
 * This codebase doesn't want to grow up to be a _TIP_ or _SIEM_.
 
 Different kinds of people will use this application. Who knows, maybe there is some other application
-which could be usefully built on top of it.
+which could be usefully built on top of it. In reality it kind of has become a SIEM, I have command line
+clients and use it as one. Others just use it for enrichment in conjunction with their existing TIP / SIEM.
 
 ### Installers and installation
 
@@ -96,17 +97,12 @@ Multiple installers and installation targets are welcomed! Documentation is equa
 If you want to modify the agent code to support a _TIP_ or _SIEM_ that's great! Does it belong here, or
 with the target application? Doc pointing to where to find agents for other applications is always welcomed.
 
-### I want to write another UI
+### I want to write another interface
 
 Cool! Does it belong here or in a separate repository? In any case we welcome doc pointing to it.
 
-### I want to extend the UI
+### I want to extend the interface
 
 That's cool, too! Don't introduce additional dependencies or security/management issues into the core
-UI and that's fine. Better would be some sort of optional or configurable install.
-
-### Where's the RESTful interface?
-
-There isn't one. Yet. If you want to write a single page app, let's talk. If you have some other purpose
-in mind, again let's talk. I (Fred Morris) am willing to write or contribute to a RESTful interface.
-
+and that's fine. (Don't make it a breaking change.) Better would be some sort of optional or
+configurable install.
