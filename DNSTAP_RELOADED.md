@@ -16,9 +16,11 @@ On the `fwm` branch this is still a work in progress.
 
 #### `FieldMapping` handlers
 
-If you've written your own `FieldMapping` handlers: `p.field('response_message')` now returns a tuple of (`dns.message`, _raw data_),
+If you're writing your own `FieldMapping` handlers: `p.field('response_message')` is now capable of returning a tuple of (`dns.message`, _raw data_),
 so references need to change from `p.field('response_message')[1]` to `p.field('response_message')[1][0]`. This only affects
-protobuf fields which are type `DnsMessageField`. See `shodohflo/protobuf/dnstap.py` for further information.
+protobuf fields which are type `DnsMessageField`. The default behavior when using the `shodohflo.protobuf.dnstap` module is unchanged,
+but `dnstap2json.py` has been modified to support the new behavior. To obtain the new behavior, subclass `dnstap.Message`
+and `dnstap.Dnstap`. See `shodohflo/protobuf/dnstap.py` and `examples/dnstap2json.py` for further information.
 
 #### `build_resolution_chain()` in particular
 
