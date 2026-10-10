@@ -125,3 +125,14 @@ __The Version__ will be the one expressed by the setting of `project.version` in
 ### Version history
 
 **0.1.0** Initial version merged from PR #15.
+
+**1.0.0** Dnstap Reloaded
+
+Changes to `dnstap2json.py` and `dnstap_agent.py` are not entirely backwards compatible, they should be
+upgraded at the same time. This also extends to [Rear View RPZ](https://github.com/m3047/rear_view_rpz):
+if you don't upgrade it the logs are going to get pretty noisy when records without an `address` field
+are encountered.
+
+Changes to `shodohflo.protobuf.dnstap` should be completely backwards compatible.
+
+_See_ [DNSTAP_RELOADED.md](DNSTAP_RELOADED.md).
