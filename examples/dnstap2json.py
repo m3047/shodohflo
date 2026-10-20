@@ -1115,7 +1115,12 @@ class ReplayServer(object):
     
     async def consume_file( self ):
         """Runs file_reader() and queue_processor() in parallel to process the file."""
-        results = await asyncio.wait( ( self.file_reader(), self.queue_processor() ) )
+        if PYTHON_IS_311:
+            create_task = asyncio.create_task
+        else:
+            create_task = self.loop.create_task
+        tasks = tuple( create_task(coro) for coro in ( self.file_reader(), self.queue_processor() ) )
+        results = await asyncio.wait( tasks )
         return
     
 async def statistics_report(statistics):
