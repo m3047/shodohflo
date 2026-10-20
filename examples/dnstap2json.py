@@ -1110,7 +1110,7 @@ class ReplayServer(object):
     async def queue_processor( self ):
         while not (self.end_of_file and self.frames.empty()):
             self.consumer.consume( await self.frames.get() )
-            await asyncio.sleep( 1 / self.MAX_REPLAY_PER_SEC, loop=self.loop )
+            await asyncio.sleep( 1 / self.MAX_REPLAY_PER_SEC )
         return
     
     async def consume_file( self ):
