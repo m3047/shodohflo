@@ -711,7 +711,7 @@ class JSONMapper(object):
                                 svcb_handled = True
                         except Exception:
                             pass
-                        if scvb_handled:
+                        if svcb_handled:
                             continue
                         if not self.warned_svcb and not (hasattr( rr, 'priority' ) and hasattr( rr, 'target' )):
                             self.warned_svcb = True
