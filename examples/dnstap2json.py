@@ -1089,7 +1089,7 @@ class ReplayServer(object):
         self.end_of_file = False
         self.consumer = consumer
         self.loop = loop
-        self.frames = asyncio.Queue( self.ENOUGH_BUFFERING, loop=loop )
+        self.frames = asyncio.Queue( self.ENOUGH_BUFFERING )
         return
     
     async def file_reader( self ):
