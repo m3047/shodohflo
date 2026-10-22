@@ -201,7 +201,7 @@ class DictOfCounters(dict):
 class RedisHandler(RedisBaseHandler):
     """Handles calls to Redis so that they can be run in a different thread."""
 
-    ADDRESS_RECORDS = { 'A', 'AAAA', 'SVCB', 'TYPE64', 'TYPE65' }
+    ADDRESS_RECORDS = { 'A', 'AAAA', 'SVCB', 'TYPE64', 'TYPE65', 'HTTPS' }
     
     def __init__(self, event_loop, ttl_grace, statistics):
         RedisBaseHandler.__init__(self, event_loop, ttl_grace)
