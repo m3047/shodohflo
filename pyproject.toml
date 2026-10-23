@@ -1,15 +1,15 @@
 [project]
 name = "shodohflo"
-version = "0.1.0"
+version = "1.0.0"
 description = "A dnstap dissector"
 readme = "README.md"
-license = { "text"= "AGPL-2.0-only" }
+license = { "text"= "Apache-2.0" }
 authors = [
     { name = "Fred Morris", email = "consulting@m3047.net" }
 ]
 urls.Repository = "https://github.com/m3047/shodohflo"
 
-requires-python = ">=3.12"
+requires-python = ">=3.6"
 dependencies = [
     "asyncio",
     "ipaddress",
