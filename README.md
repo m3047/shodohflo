@@ -133,6 +133,7 @@ upgraded at the same time. This also extends to [Rear View RPZ](https://github.c
 if you don't upgrade it the logs are going to get pretty noisy when records without an `address` field
 are encountered.
 
-Changes to `shodohflo.protobuf.dnstap` should be completely backwards compatible.
+Changes to `shodohflo.protobuf.dnstap` should be completely backwards compatible. Tested with Python 3.6 and 3.14,
+dnspython 1.15 and 2.8
 
 _See_ [DNSTAP_RELOADED.md](DNSTAP_RELOADED.md).
