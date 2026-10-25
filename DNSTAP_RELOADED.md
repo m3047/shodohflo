@@ -8,8 +8,6 @@ Major changes have been made to both `examples/dnstap2json.py` and `agents/dnsta
 improve your workflow in the long run. If you're just taking the output of `dnstap2json.py` or `dnstap_agent.py` at _face value_
 (as Sherry Turckle might say) you can keep on, keepin' on.
 
-On the `fwm` branch this is still a work in progress.
-
 ## Changes, Changes
 
 ### Code changes
